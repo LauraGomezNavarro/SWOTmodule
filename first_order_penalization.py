@@ -558,10 +558,11 @@ def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_in
 			SSH_obs_left_ma = SSH_obs_ma[:,0:nhalfswath]
 			SSH_obs_right_ma = SSH_obs_ma[:,nhalfswath:]
 	
-			SSH_model_left_0 = np.ma.filled(SSH_model_left_ma,np.nan)
-			SSH_model_right_0 = np.ma.filled(SSH_model_right_ma,np.nan)
-			SSH_obs_left_0 = np.ma.filled(SSH_obs_left_ma,np.nan)
-			SSH_obs_right_0 = np.ma.filled(SSH_obs_right_ma,np.nan)
+			SSH_model_left_0 = np.ma.filled(SSH_model_left_ma,0)
+			SSH_model_right_0 = np.ma.filled(SSH_model_right_ma,0)
+			SSH_obs_left_0 = np.ma.filled(SSH_obs_left_ma,0)
+			SSH_obs_right_0 = np.ma.filled(SSH_obs_right_ma,0)
+			
 			
 			# 3.4 Applying the filter
 			filt_SSH_model_left = tikhonov_filter(iter_max=iter_max_filter, var=SSH_model_left_0,mask=None, regularization_model=regularization_model, lambd=lambd)
@@ -576,14 +577,7 @@ def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_in
 			filt_SSH_model_ma = np.ma.masked_invalid(filt_SSH_model)
 			filt_SSH_obs_ma = np.ma.masked_invalid(filt_SSH_obs)
 
-			box = [2, 7, 36, 44] #lomin, lomax, lamin, lamax
-
-			plt.figure(figsize = (16, 10))
-
-			ax1, ax2 = plot_2_map(lon, lat, filt_SSH_model, lon, lat,filt_SSH_obs, box, 			vmin=-0.3e0, vmax=0.3e0, cmap='jet')
-
-			ax1.set_title('SSH_model', size=18)
-			ax2.set_title('SSH_obs', size=18)
+			
 			# 3.6 Spline cubic interpolation
 			SSH_obs_interp=scipy.interpolate.interp2d(x_ac, tim, filt_SSH_obs_ma, kind='cubic', copy=True, bounds_error=False)(np.arange(x_ac[nhalfswath-1]+pas,x_ac[nhalfswath],pas),tim)
 			vSSH_obs =np.ma.masked_values(np.insert(filt_SSH_obs_ma,nhalfswath,np.transpose(SSH_obs_interp),axis=1),SSH_obs.fill_value)
