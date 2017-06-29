@@ -107,6 +107,74 @@ def filter(u, iter_max, lambd, regularization_model):
 
 #=======================================================================
 
+def plot_single_pass(self, lon, lat, var, vmin, vmax, merv, parv, cmap, land, **options):
+        
+        """
+        Plots an individual plot of the data using scatter and Basemap.
+        Input variables:
+        - var = variable to be plotted
+        - box = box region of the area wanted to be shown
+        , where box is a 1 x 4 array: 
+        [minimum_longitude maximum_longitude minimum_latitude maximum_latitude]
+        - vmin = minimum value of the colorbar 
+        - vmax = maximum value of the colorbar
+        - merv = a 1 x 4 array to know if to label and where the meridians
+        -- [0 0 0 0] = no labels
+        -- [1 0 0 1]
+        - parv = like merv, but for the parallels' labels
+        - cmap = colormap to be used
+        - land = 0 if you want only the data to be plotted or 1 if you want the land do be plotted ontop
+        - options:
+            -- ax = axis (for e.g. if only one plot, not necessary)
+        Output variables:
+        - pp = plot object
+        """
+        lomin = swot_pass1.box[0]
+        lomax = swot_pass1.box[1]
+        lamin = swot_pass1.box[2]
+        lamax = swot_pass1.box[3]
+        
+        if land =='0':
+
+            if not options: #(i.e., if no axis define, one single plot)
+                pp = plt.scatter(lon, lat, s=2, c=var, linewidth='0', vmin=vmin, vmax=vmax, cmap = cmap)
+                pp.set_clim([vmin, vmax])
+                cbar = plt.colorbar(pp)
+                #cbar.ax.tick_params(labelsize=16)
+            else:
+                pp = ax.scatter(lon, lat, s=2, c=var, linewidth='0', vmin=vmin, vmax=vmax, cmap = cmap)
+                pp.set_clim([vmin, vmax])
+                cbar = plt.colorbar(pp)
+                #cbar.ax.tick_params(labelsize=16)
+                
+        elif land == '1':
+            if not options:
+                map = Basemap(llcrnrlon=lomin,llcrnrlat=lamin,urcrnrlon=lomax,urcrnrlat=lamax
+                              , resolution='i', projection='merc', lat_0 = (lamin+lamax)/2
+                              , lon_0 = (lomin+lomax)/2)
+            else:
+                map = Basemap(llcrnrlon=lomin,llcrnrlat=lamin,urcrnrlon=lomax,urcrnrlat=lamax
+                              , resolution='i', projection='merc', lat_0 = (lamin+lamax)/2
+                              , lon_0 = (lomin+lomax)/2, ax=options.get("ax"))
+
+            map.drawcoastlines()
+
+            map.fillcontinents(color='#ddaa66')
+            map.drawmeridians(np.arange(-160, 140, 2), labels=merv)#, size=18)
+            map.drawparallels(np.arange(0.5, 70.5, 2), labels=parv)#, size=18)
+
+            pp = map.scatter(lon, lat, s=2, c=var, linewidth='0', vmin=vmin, vmax=vmax, latlon=True
+                             , cmap = cmap)
+            pp.set_clim([vmin, vmax])
+
+            if not options:
+                cbar = plt.colorbar(pp)
+                #cbar.ax.tick_params(labelsize=16)
+            
+        return pp
+
+#=======================================================================
+
 def plot_map(xx, yy, var, ax, box, vmin, vmax, merv, parv, cmap):
     """
     Plots an individual plot of the data using scatter and Basemap.
