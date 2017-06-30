@@ -171,7 +171,7 @@ def plot_map(xx, yy, var, box, vmin, vmax, merv, parv, cmap, land, **options):
     -- [1 0 0 1]
     - parv = like merv, but for the parallels' labels
     - cmap = colormap to be used
-    - land = = 0 if you want only the data to be plotted or 1 if you want the land do be plotted ontop.
+    - land = 0 if you want only the data to be plotted or 1 if you want the land do be plotted ontop.
     - options:
       -- ax = axis (for e.g. if only one plot, not necessary)
     Output variables:
@@ -182,7 +182,7 @@ def plot_map(xx, yy, var, box, vmin, vmax, merv, parv, cmap, land, **options):
     lamin = box[2]
     lamax = box[3]
     
-    if land =='0':
+    if land ==0:
 
         if not options: #(i.e., if no axis define, one single plot)
                 pp = plt.scatter(xx, yy, s=2, c=var, linewidth='0', vmin=vmin, vmax=vmax, cmap = cmap)
@@ -195,7 +195,7 @@ def plot_map(xx, yy, var, box, vmin, vmax, merv, parv, cmap, land, **options):
                 cbar = plt.colorbar(pp)
                 #cbar.ax.tick_params(labelsize=16)
 
-    elif land ==‘1’:
+    elif land ==1:
 
         if not options: #(i.e., if no axis define, one single plot) 
             map = Basemap(llcrnrlon=lomin,llcrnrlat=lamin,urcrnrlon=lomax,urcrnrlat=lamax,
@@ -375,8 +375,8 @@ def SWOT_filter(myfile, output_filename, lambd, iter_max, regularization_model, 
 	
 	SSH_model_filtered = output_file.variables['SSH_model_filtered']
 	SSH_model_filtered[:,:] = filt_SSH_model[:,:]
-	SSH_obs_filtere = output_file.variables['SSH_obs_filtered']
-	SSH_obs_filtere[:,:] = filt_SSH_obs[:,:]
+	SSH_obs_filtered = output_file.variables['SSH_obs_filtered']
+	SSH_obs_filtered[:,:] = filt_SSH_obs[:,:]
 
 	# Define long_name:
 	if regularization_model == 0:
@@ -442,32 +442,32 @@ def SWOT_filter(myfile, output_filename, lambd, iter_max, regularization_model, 
 		axC2 = plt.subplot(gs[-1, -1])
 
 		# No filter:
-		pp = plot_map(lon, lat, SSH_model, ax_nf_m, box, vmin, vmax, merv = [0,0,0,0]
-			      , parv = [1,0,0,1], cmap='seismic')
+		plot_map(lon, lat, SSH_model, box, vmin, vmax, merv = [0,0,0,0]
+			      , parv = [1,0,0,1], cmap='seismic', land=1, ax=ax_nf_m)
 		ax_nf_m.set_title('SSH_model \n ', size=20)
 		ax_nf_m.set_ylabel('Non-filtered', labelpad=80, size = 20)
 
-		plot_map(lon, lat, SSH_obs, ax_nf_o, box, vmin, vmax, merv = [0,0,0,0]
-			 , parv = [0,0,0,0], cmap='seismic')
+		plot_map(lon, lat, SSH_obs, box, vmin, vmax, merv = [0,0,0,0]
+			 , parv = [0,0,0,0], cmap='seismic', land=1, ax=ax_nf_o)
 		ax_nf_o.set_title('SSH_obs \n ', size=20)
 
-		pp2 = plot_map(lon, lat, diff_nofilt, ax_nf_d, box, vmin2, vmax2
-			       , merv = [0,0,0,0], parv = [0,0,0,0], cmap='viridis')
+		plot_map(lon, lat, diff_nofilt, box, vmin2, vmax2
+			       , merv = [0,0,0,0], parv = [0,0,0,0], cmap='viridis', land=1,  ax=ax_nf_d)
 		ax_nf_d.set_title('Absolute difference \n (SSH_obs - SSH_model)', size=20)
 
 		# Filtered:
-		pp = plot_map(lon, lat, filt_SSH_model, ax_f_m, box, vmin, vmax, merv = [1,0,0,1]
-			      , parv = [1,0,0,1], cmap='seismic')
+		plot_map(lon, lat, filt_SSH_model, box, vmin, vmax, merv = [1,0,0,1]
+			      , parv = [1,0,0,1], cmap='seismic', land=1, ax=ax_f_m)
 		ax_f_m.set_ylabel('Filtered', labelpad=80, size = 20)
 
-		plot_map(lon, lat, filt_SSH_obs, ax_f_o, box, vmin, vmax, merv = [1,0,0,1]
-			 , parv = [1,0,0,1], cmap='seismic')
+		plot_map(lon, lat, filt_SSH_obs, box, vmin, vmax, merv = [1,0,0,1]
+			 , parv = [1,0,0,1], cmap='seismic', land=1, ax=ax_f_o)
 
-		pp2 = plot_map(lon, lat, diff_filt, ax_f_d, box, vmin2, vmax2
-			       , merv = [1,0,0,1], parv = [1,0,0,1], cmap='viridis')
+		plot_map(lon, lat, diff_filt, box, vmin2, vmax2
+			       , merv = [1,0,0,1], parv = [1,0,0,1], cmap='viridis', land=1, ax=ax_f_d)
 
-		cbar1 = plt.colorbar(pp, cax=axC1, orientation='horizontal')
-		cbar2 = plt.colorbar(pp2, cax=axC2, orientation='horizontal')
+		#cbar1 = plt.colorbar(pp, cax=axC1, orientation='horizontal')
+		#cbar2 = plt.colorbar(pp2, cax=axC2, orientation='horizontal')
 		cbar1.ax.tick_params(labelsize=18)
 		cbar2.ax.tick_params(labelsize=18)
 		cbar2.set_ticks(np.arange(0., 0.3, 0.1))
@@ -702,10 +702,11 @@ def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_in
 
 		plt.figure(figsize = (16, 10))
 
-		ax1, ax2 = plot_2_map(vlon, vlat, vfilt_SSH_model, vlon, vlat,vfilt_SSH_obs, box, 			vmin=-0.3e0, vmax=0.3e0, cmap='jet')
+		#ax1, ax2 = plot_2_map(vlon, vlat, vfilt_SSH_model, vlon, vlat,vfilt_SSH_obs, box, 			vmin=-0.3e0, vmax=0.3e0, cmap='jet')
 
-		ax1.set_title('SSH_model', size=18)
-		ax2.set_title('SSH_obs', size=18)
+		#ax1.set_title('SSH_model', size=18)
+		#ax2.set_title('SSH_obs', size=18)
+                pp = plot_map(vlon, vlat, vfilt_SSH_model, box, vmin=-0.3, vmax=0.3, merv=[1,0,0,1], parv=[1,0,0,1], cmap='jet', land=0)
                 
                 if savefig == 'yes':
                     filenamep = output_filename.split('/')[-1].split('.')[0]
