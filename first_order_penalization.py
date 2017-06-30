@@ -81,29 +81,75 @@ def laplacian(u):
     return Ml
 #=======================================================================
 
-def filter(u, iter_max, lambd, regularization_model):
+def filter(var, iter_max, lambd, regularization_model):
     '''
-    u = variable to be filtered
-    iter_max = maximum number of iterations
+    var = variable to be filtered
+    iter_max = maximum number of iterations or 'cc' if convergence criteria is to be applied
     lambd = lambda: regularization parameter (the larger lambda, the more regular is the denoised image).  This parameter needs to be adapted to the regularization model. 
     regularization_model = 0 if Tikhonov regularization and 1 if second order penalization (regularization of vorticity)
     '''
-    
-    ima = u
-    ima_obs = u
+
+    ima = var
+    ima_obs = var
 
     if regularization_model == 0:
         tau = 1./(8*lambd)
-        for k in xrange(0,iter_max):
-            ima = ima + tau*(ima_obs - ima + lambd*laplacian(ima))
-            imaw = imaw + tau*(ima_obsw - imaw + lambd*laplacian(imaw))
+
+        if iter_max == 'cc':
+            epsilon = 0.000001
+	    
+            itern = 1
+            imaf = ima + tau*(ima_obs - ima + lambd*np_laplacian(ima))
+
+            numerator_norm = np.nansum(gradx(imaf - ima)**2) + np.nansum(grady(imaf - ima)**2)
+            ima_norm = np.nansum(gradx(ima)**2) + np.nansum(grady(ima)**2)
+            conv_crit = numerator_norm / ima_norm
+        
+            while conv_crit > epsilon:
+                ima = np.copy(imaf)
+                itern = itern + 1
+                print 'iteration: ' + str(itera)
+                imaf = ima + tau*(ima_obs - ima + lambd*np_laplacian(ima))
+                numerator_norm = np.nansum(gradx(imaf - ima)**2) + np.nansum(grady(imaf - ima)**2)
+                ima_norm = np.nansum(gradx(ima)**2) + np.nansum(grady(ima)**2)
+                conv_crit = numerator_norm / ima_norm
+
+        else:
+            
+            for k in xrange(0,iter_max):
+                ima = ima + tau*(ima_obs - ima + lambd*laplacian(ima))
+	    imaf = ima
 
     elif regularization_model == 1:
-        tau=1./(512*lambd)
-        for k in xrange(0,iter_max):
-            ima = ima + tau*(ima_obs-ima+lambd*laplacian(laplacian(laplacian(ima))))
+        
+	tau=1./(512*lambd)
+        
+	if iter_max == 'cc':
+            epsilon = 0.000001
+	    
+            itern = 1
+            imaf = ima + tau*(ima_obs-ima+lambd*laplacian(laplacian(laplacian(ima))))
 
-    return ima
+            numerator_norm = np.nansum(gradx(imaf - ima)**2) + np.nansum(grady(imaf - ima)**2)
+            ima_norm = np.nansum(gradx(ima)**2) + np.nansum(grady(ima)**2)
+            conv_crit = numerator_norm / ima_norm
+        
+            while conv_crit > epsilon:
+                ima = np.copy(imaf)
+                itern = itern + 1
+                print 'iteration: ' + str(itera)
+		imaf = ima + tau*(ima_obs - ima + lambd*laplacian(laplacian(laplacian(ima))))
+                numerator_norm = np.nansum(gradx(imaf - ima)**2) + np.nansum(grady(imaf - ima)**2)
+                ima_norm = np.nansum(gradx(ima)**2) + np.nansum(grady(ima)**2)
+                conv_crit = numerator_norm / ima_norm
+
+	else:
+
+	    for k in xrange(0,iter_max):
+                ima = ima + tau*(ima_obs-ima+lambd*laplacian(laplacian(laplacian(ima))))
+            imaf = ima 
+
+    return imaf
 
 #=======================================================================
 
@@ -367,24 +413,39 @@ def SWOT_filter(myfile, output_filename, lambd, iter_max, regularization_model, 
     		# Define units:
     		SSH_model_filtered.units = "m"
     		SSH_obs_filtered.units = "m"
-    		# Define long_name:
-    		SSH_model_filtered.long_name = "SSH interpolated from model filtered using a first order penalization (Tikhonov regularization) filter"
-    		SSH_obs_filtered.long_name = "Observed SSH (SSH_model+errors) filtered using a first order penalization (Tikhonov regularization) filter" 
-                # Define filter parameter(s) as attribute:
-                SSH_model_filtered.Iter_max = iter_max
-		SSH_model_filtered.Lambda = lambd
-                SSH_obs_filtered.Iter_max = iter_max
-                SSH_obs_filtered.Lambda = lambd
 
     		print 'Created the filtered variables'
 	else:
     		print 'Variables already created'
+	
+	SSH_model_filtered = output_file.variables['SSH_model_filtered']
+	SSH_model_filtered[:,:] = filt_SSH_model[:,:]
+	SSH_obs_filtere = output_file.variables['SSH_obs_filtered']
+	SSH_obs_filtere[:,:] = filt_SSH_obs[:,:]
 
-	appendvar_m = output_file.variables['SSH_model_filtered']
-	appendvar_m[:,:] = filt_SSH_model[:,:]
-	appendvar_o = output_file.variables['SSH_obs_filtered']
-	appendvar_o[:,:] = filt_SSH_obs[:,:]
+	# Define long_name:
+	if regularization_model == 0:
+		SSH_model_filtered.reg_model = "SSH interpolated from model filtered using a first order penalization filter"
+   		SSH_obs_filtered.reg_model = "SSH interpolated from model filtered using a first order penalization filter"
+    
+	elif regularization_model == 1:
 
+    		SSH_model_filtered.long_name = "SSH interpolated from model filtered using a second order penalization filter"
+	    	SSH_obs_filtered.long_name = "Observed SSH (SSH_model+errors) filtered using a second order penalization filter" 
+        
+	# Define filter parameter(s) as attribute:
+        if iter_max == 'cc':
+	
+		SSH_model_filtered.Iter_max = 'Convergence criteria applied'
+		SSH_obs_filtered.Iter_max =  'Convergence criteria applied'
+
+	else:
+		SSH_model_filtered.Iter_max = iter_max
+		SSH_obs_filtered.Iter_max = iter_max
+
+	SSH_model_filtered.Lambda = lambd
+	SSH_obs_filtered.Lambda = lambd        
+		
 	print 'Variables updated'
 
 	output_file.close()
