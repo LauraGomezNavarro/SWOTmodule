@@ -503,16 +503,64 @@ def tikhonov_filter(iter_max, var, mask, regularization_model, lambd):
             ima = ima + tau*(maskk*(ima_obs-ima)+lambd*laplacian(laplacian(laplacian(ima))))
     return ima
 
+
 #=======================================================================
 
-def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_inpainting, regularization_model, spline, plot, savefig):
+def moyenne(var,r,i,j):
+    
+    ''' Cette fonction permet de calculer la moyenne des points dans un rayon de r autour du point (i,j).
+    Lorsque que l on veut calculer la moyenne autour d un point situe sur le bord de la trace, 
+    ce n'est plus le rayon r qui est utilise mais les rayons rimd, rimg, rjmd et rjmg. '''
+    
+    newvar=np.ma.copy(var)
+    rimd=min(r,newvar.shape[0]-i-1) #rayon sur la ligne a droite
+    rimg=min(r,i)                   #rayon sur la ligne a gauche
+    rjmd=min(r,newvar.shape[1]-j-1) #rayon sur la colonne en haut
+    rjmg=min(r,j)                   #rayon sur la colonne en bas
+    moy=np.ma.mean(newvar[i-rimg:i+rimd+1,j-rjmg:j+rjmd+1])
+    return moy
+
+#=======================================================================
+
+def demaskk(variable):
+    
+    ''' Cette fonction permet d appliquer la fonction moyenne en chaque point masque de la trace'''
+    
+    r=1
+    var=np.ma.copy(variable)
+    for i in range(var.shape[0]):
+        for j in range(var.shape[1]):
+            if variable.mask[i,j] == True:  #on ne prend en compte que les points masques
+                r=r-1  #ceci permet de repartir du r precedent plutot que de r=1
+                while moyenne(variable,r,i,j) is np.ma.masked:
+                    r=r+1
+                var[i,j]=moyenne(variable,r,i,j)
+    return var
+
+#=======================================================================
+
+def SWOT_inpainting(myfile, output_filename, lambd=40., iter_max_filter=100, iter_max_inpainting=100, regularization_model=0, demask='no', spline='no', plot='no', savefig='no'):
         
-     
+        ''' 
+	myfile : fichier a traiter
+	output_filename : nom du fichier NetCDF du resultat de cette fonction
+	lambd (optionnel) : valeur de lambda pour la fonction cout, par defaut lambd=40.
+	iter_max_filter (optionnel) : nombre d'iterations pour le filtre de debruitage, par defaut iter_max_filter=100
+	iter_max_inpainting (optionnel) : nombre d'iterations pour le filtre d'inpainting,  par defaut iter_max_inpainting=100
+	regularization_model(optionnel): valeur de regularization_model pour le filtre, par defaut regularization_model=0
+	demask='yes' or 'no'(optionnel): si demask='yes' les valeurs masquees des iles ou des continents seront remplacees par la valeur reelle la plus proche, par defaut demask='no'
+	spline='yes' or 'no'(optionnel): si spline='yes' l'inter-trace sera remplie par une interpolation spline cubique, par defaut spline='no'
+	plot='yes' or 'no'(optionnel): si plot='yes' la fonction affichera un plot du resultat, par defaut plot='no'
+	savefig='yes' or 'no'(optionnel): si savefig='yes' le plot sera sauvegarder, par defaut savefig='no'
+	'''
         src = myfile
         dst = output_filename
         copyfile(src, dst)
 	
 	output_file = Dataset(output_filename,'r+')
+
+	if demask == 'yes':
+		print ('Attention, cela peut prendre du temps.')
 	
         ##====================== Load SWOT data ========================
 
@@ -530,6 +578,8 @@ def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_in
 	
 	
 	##=================Preparing the SWOT data arrays===============
+	
+
 	# 1. Calculating the new size of variables
 	pas = abs(x_ac[1]-x_ac[0]) #pas de x_ac
     	nhalfswath=np.shape(lon)[1]/2 #nombre de pixels dans une fauchee
@@ -558,6 +608,14 @@ def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_in
 			SSH_model_ma = np.ma.masked_invalid(SSH_model)
 			SSH_obs_ma = np.ma.masked_invalid(SSH_obs)
 
+			if demask == 'yes':
+				# 3.4 Demask
+				new_SSH_model = demaskk(SSH_model_ma)
+				new_SSH_obs=demaskk(SSH_obs_ma)
+			else :
+				new_SSH_model = SSH_model_ma
+				new_SSH_obs=SSH_obs_ma
+
 
 			# 3.2 Separate into left and right swath
 			nhalfswath=np.shape(lon)[1]/2
@@ -568,31 +626,48 @@ def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_in
 			lat_right = lat[:,nhalfswath:]
 
 			# 3.3 Masking the SWOT outputs and give a value of masked values
-			SSH_model_left_ma = SSH_model_ma[:,0:nhalfswath]
-			SSH_model_right_ma = SSH_model_ma[:,nhalfswath:]
+			SSH_model_left_ma = new_SSH_model[:,0:nhalfswath]
+			SSH_model_right_ma = new_SSH_model[:,nhalfswath:]
 
-			SSH_obs_left_ma = SSH_obs_ma[:,0:nhalfswath]
-			SSH_obs_right_ma = SSH_obs_ma[:,nhalfswath:]
-	
-			SSH_model_left_0 = np.ma.filled(SSH_model_left_ma,0)
-			SSH_model_right_0 = np.ma.filled(SSH_model_right_ma,0)
-			SSH_obs_left_0 = np.ma.filled(SSH_obs_left_ma,0)
-			SSH_obs_right_0 = np.ma.filled(SSH_obs_right_ma,0)
+			SSH_obs_left_ma = new_SSH_obs[:,0:nhalfswath]
+			SSH_obs_right_ma = new_SSH_obs[:,nhalfswath:]
+
+			if demask == 'yes':
+				new_SSH_model_left = SSH_model_left_ma
+				new_SSH_model_right = SSH_model_right_ma
+				new_SSH_obs_left=SSH_obs_left_ma
+				new_SSH_obs_right=SSH_obs_right_ma
+			else:
+				new_SSH_model_left = np.ma.filled(SSH_model_left_ma,0)
+				new_SSH_model_right = np.ma.filled(SSH_model_right_ma,0)
+				new_SSH_obs_left=np.ma.filled(SSH_obs_left_ma,0)
+				new_SSH_obs_right=np.ma.filled(SSH_obs_right_ma,0)
 			
 			
 			# 3.4 Applying the filter
-			filt_SSH_model_left = tikhonov_filter(iter_max=iter_max_filter, var=SSH_model_left_0,mask=None, regularization_model=regularization_model, lambd=lambd)
-			filt_SSH_model_right = tikhonov_filter(iter_max=iter_max_filter, var=SSH_model_right_0,mask=None, regularization_model=regularization_model, lambd=lambd)
-			filt_SSH_obs_left = tikhonov_filter(iter_max=iter_max_filter, var=SSH_obs_left_0, mask=None, regularization_model=regularization_model, lambd=lambd)
-			filt_SSH_obs_right = tikhonov_filter(iter_max=iter_max_filter, var=SSH_obs_right_0, mask=None, regularization_model=regularization_model, lambd=lambd)
 
+			filt_SSH_model_left = tikhonov_filter(iter_max=iter_max_filter, var=new_SSH_model_left,mask=None, regularization_model=regularization_model, lambd=lambd)
+			filt_SSH_model_right = tikhonov_filter(iter_max=iter_max_filter, var=new_SSH_model_right,mask=None, regularization_model=regularization_model, lambd=lambd)
+			filt_SSH_obs_left = tikhonov_filter(iter_max=iter_max_filter, var=new_SSH_obs_left, mask=None, regularization_model=regularization_model, lambd=lambd)
+			filt_SSH_obs_right = tikhonov_filter(iter_max=iter_max_filter, var=new_SSH_obs_right, mask=None, regularization_model=regularization_model, lambd=lambd)
+
+			filt_SSH_model_left_ma = np.ma.masked_invalid(filt_SSH_model_left)
+			filt_SSH_model_right_ma = np.ma.masked_invalid(filt_SSH_model_right)
+			filt_SSH_obs_left_ma = np.ma.masked_invalid(filt_SSH_obs_left)
+			filt_SSH_obs_right_ma = np.ma.masked_invalid(filt_SSH_obs_right)
+
+			
+			
 
 			# 3.5 Concatenating left and right swaths
-        		filt_SSH_model = np.concatenate((filt_SSH_model_left, filt_SSH_model_right), axis=1)
-			filt_SSH_obs = np.concatenate((filt_SSH_obs_left, filt_SSH_obs_right), axis=1)
+        		filt_SSH_model = np.concatenate((new_SSH_model_left, new_SSH_model_right), axis=1)
+			filt_SSH_obs = np.concatenate((new_SSH_obs_left, new_SSH_obs_right), axis=1)
 			filt_SSH_model_ma = np.ma.masked_invalid(filt_SSH_model)
 			filt_SSH_obs_ma = np.ma.masked_invalid(filt_SSH_obs)
 
+
+			
+	
 			
 			# 3.6 Spline cubic interpolation
 			SSH_obs_interp=scipy.interpolate.interp2d(x_ac, tim, filt_SSH_obs_ma, kind='cubic', copy=True, bounds_error=False)(np.arange(x_ac[nhalfswath-1]+pas,x_ac[nhalfswath],pas),tim)
@@ -702,16 +777,16 @@ def SWOT_inpainting(myfile, output_filename, lambd, iter_max_filter, iter_max_in
 
 		plt.figure(figsize = (16, 10))
 
-		#ax1, ax2 = plot_2_map(vlon, vlat, vfilt_SSH_model, vlon, vlat,vfilt_SSH_obs, box, 			vmin=-0.3e0, vmax=0.3e0, cmap='jet')
+		ax1, ax2 = plot_2_map(vlon, vlat, vfilt_SSH_model, vlon, vlat,vfilt_SSH_obs, box, 			vmin=-0.3e0, vmax=0.3e0, cmap='jet')
 
-		#ax1.set_title('SSH_model', size=18)
-		#ax2.set_title('SSH_obs', size=18)
-                pp = plot_map(vlon, vlat, vfilt_SSH_model, box, vmin=-0.3, vmax=0.3, merv=[1,0,0,1], parv=[1,0,0,1], cmap='jet', land=0)
+		ax1.set_title('SSH_model', size=18)
+		ax2.set_title('SSH_obs', size=18)
+                #pp = plot_map(vlon, vlat, vfilt_SSH_model, box, vmin=-0.3, vmax=0.3, merv=[1,0,0,1], parv=[1,0,0,1], cmap='jet', land=0)
                 
                 if savefig == 'yes':
                     filenamep = output_filename.split('/')[-1].split('.')[0]
                     folder = output_filename.split('/Users')[-1].split(filenamep)[0]
-                    savename = '/Users' + folder  + 'figs/' + filenamep + '.png'
+                    savename =  folder  + filenamep + '.png'
                     plt.savefig(str(savename), bbox_inches='tight')
                 
                 plt.show()
