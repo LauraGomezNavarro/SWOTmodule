@@ -89,6 +89,120 @@ def trilaplacian(u):
     
     return u2
 
+############
+
+def prepare_data_for_filtering(ssh_initial, lon, lat, x_ac):
+    """
+    Preparing the SWOT data arrays for filtering
+    Input:
+    -ssh_initial:  Should be a masked array
+    Output:
+    -ssh_initial_pref: ssh_initial pre-filtering --> ready for input for the filtering functions
+    -lon_
+    -lat_
+    -mask_data
+    """
+    # 1. Copy input variables
+    ssh_initial_pre_f = ssh_initial.copy()
+    lon_pre_f = lon.copy()
+    lat_pre_f = lat.copy()
+    x_ac_pre_f = x_ac.copy()
+    
+    # 1.1. Obtain mask of data (ssh_initial):
+    mask_data_pre_f = ssh_initial.mask
+    
+    if all(mask_data_pre_f == False):
+        'Print mask problem: all False'
+    
+    # 2. Making SWOT array organized as (lon, lat) a.k.a., (x, y) a.k.a., (x_ac, x_al): 
+    
+    # Concept: x direction (x_ac) will always be smaller (in theory) than in y (x_al), so:
+    
+    indsx, indsy = lon_pre_f.shape # lon chosen randomly, any variable ok
+    if indsx > indsy:
+        lon_pre_f = np.transpose(lon_pre_f)
+        lat_pre_f = np.transpose(lat_pre_f)
+        ssh_initial_pre_f = np.transpose(ssh_initial_pre_f)
+        mask_data_pre_f = np.transpose(mask_data_pre_f)
+
+    elif indsx == indsy:
+        print 'Problem'
+    
+    # 3. Check longitude in -180 : +180 format:
+    if any(xlo < 0 for xlo in lon_pre_f):
+        lon_pre_f[lon_pre_f > 180] -= 360 
+    
+    # 4. Flipping the SWOT array if necessary: 
+    # So that lon increases from left to right and lat from bottom to top 
+    # (depends on if pass is ascending or descending)
+
+    lon_dif = lon_pre_f[1,0] - lon_pre_f[0,0]
+    lat_dif = lat_pre_f[0,1] - lat_pre_f[0,0]
+
+    # Need to revise below , above already adapted for datasets oragnized as x,y instead of y,x
+    if (lat_dif<0):
+        print 'flipped variables created'
+        ## Ascending pass (pass 22 for in the fast-sampling phase)        
+        lon_pre_f = np.flipud(lon_pre_f)
+        lat_pre_f = np.flipud(lat_pre_f)
+        ssh_initial_pre_f = np.flipud(ssh_initial_pre_f)
+        mask_data_pre_f = np.flipud(mask_data_pre_f)
+        
+    elif (lon_dif<0):
+        print 'flipped variables created'
+        ## Descending pass (pass 9 for in the fast-sampling phase)
+        lon_pre_f = np.fliplr(lon_pre_f)
+        lat_pre_f = np.fliplr(lat_pre_f)
+        ssh_initial_pre_f = np.fliplr(ssh_initial_pre_f)
+        mask_data_pre_f = np.fliplr(mask_data_pre_f)
+        
+    # 5. Fixing the SWOT grid (regular longitude increments, i.e., no repeated nadir values)
+    # At a 1km resolution, should have a size of 121 across track (size of first dim after transposing)    
+
+    xx, yy = lon_pre_f.shape
+    if (lon_pre_f[(xx/2)-1, 0] == lon_pre_f[xx/2, 0]): # this only happens
+        # when simulation is done with no gap
+        # if no gap simulaton case need to eliminate repeated nadir value
+        lon_pre_f = np.delete(lon_pre_f, (xx/2), axis=0)
+        lat_pre_f = np.delete(lat_pre_f, (xx/2), axis=0)
+        ssh_initial_pre_f = np.delete(ssh_initial_pre_f, (xx/2), axis=0)
+        x_ac_pre_f = np.delete(x_ac_pre_f, (xx/2), axis=0)
+        mask_data_pre_f = np.delete(mask_data_pre_f, (xx/2), axis=0)        
+        
+    # 6. Eliminating values at x_ac = 0.  (By now (in the code) the x_ac dimension (x) should be the first axis) 
+    if any(x_ac_pre_f == 0):
+        x0 = np.where(x_ac_pre_f==0)
+
+        lon_pre_f = np.delete(lon_pre_f, x0, axis=0)
+        lat_pre_f = np.delete(lat_pre_f, x0, axis=0)
+        ssh_initial_pre_f = np.delete(ssh_initial_pre_f, x0, axis=0)
+        x_ac_pre_f = np.delete(x_ac_pre_f, x0, axis=0)
+        mask_data_pre_f = np.delete(mask_data_pre_f, x0, axis=0)
+        
+    # 7. Masking the SWOT outputs
+    ## 7.1. Change masked values to 0:
+
+    ssh_initial_pre_f[mask_data_pre_f] = 0. 
+    
+    # --> at this point we have obtained these variables:
+    # -ssh_initial_pre_f: variable correctly arranged (xx, yy, with dims increasing in expected sense) and gap values = 0 (without them being masked)
+    
+    ## 7.2. Converting variable to masked array
+    ssh_initial_pre_f = np.ma.masked_array(ssh_initial_pre_f, mask_data_pre_f) #ssh_initial_ma
+    
+    # --> at this point we have obtained these variables:
+    # -ssh_initial_pre_f: gap masked, with mask values = 0
+    
+    # For penalization filter methods, we will then obtain:
+    # -ssh_initial_gausf: gaussian filtered variable
+    # -ssh_initial_gap_full: gap filled with gaussian filtered data
+    
+    return ssh_initial_pre_f, lon_pre_f, lat_pre_f, x_ac_pre_f,  mask_data_pre_f
+
+    
+
+############
+# Filters:
 def gaussian_with_nans(u, sigma):
     '''
     Evan Mason
@@ -112,11 +226,11 @@ def penalization_filter(var, mask_of_data, var_obs, lambd=40, regularization_mod
     '''
     SSH_obs_gap
     -Input(s):
-    --var = variable to be filtered
+    --var = variable to be filtered (before ssh_initial_ma(initial SSH through preparation function and finally masked))
     Default = 
     --mask_of_data = array of True and False values.  0 when land or swath gap values.
     Default = 
-    --var_obs = orginal data without filling the masked values 
+    --var_obs = orginal data without filling the masked values with gaussian filter 
     --lambd = lambda: regularization parameter (the larger lambda, the more regular is the denoised image).  
     This parameter needs to be adapted to the regularization model. 
     --regularization_model = 0 if Tikhonov regularization (first order penalization, i.e. gradient penalization) 
@@ -127,7 +241,21 @@ def penalization_filter(var, mask_of_data, var_obs, lambd=40, regularization_mod
     --ima1 = filtered image
     --itern = number of iterations realized until convergence
     '''
+     
+    mask_of_data = mask_gap #should lter improve this so that from the mask of var in (i.e. ssh_initial_ma, can separate the mask of the gap from the rest)
+        
+    ## Applying the gaussian filter:
+
+    sigma = 10 # --> this sigma?
+    ssh_initial_gausf = gaussian_with_nans(var, sigma) #ssh_initial_ma, sigma
+
+    ## Assigning the gaussian filtered data to the gap:
+
+    ssh_initial_gap_full = var.copy() #ssh_initial_ma
+
+    ssh_initial_gap_full[mask_gap] = ssh_initial_gausf[mask_gap] # or leave it as ssh_initial_nogap.mask? and one variable less?
     
+    ####
     ima0 = var
     ima_obs = var_obs
     
@@ -161,7 +289,8 @@ def penalization_filter(var, mask_of_data, var_obs, lambd=40, regularization_mod
     return ima1, itern
 
 ################################################################
-    
+# Main function:
+
 def SWOTdenoise(datadir=None, filename=None **kwargs):
     # , method, parameter, inpainting='no',
     """
@@ -234,117 +363,15 @@ def SWOTdenoise(datadir=None, filename=None **kwargs):
     epsilon = kwargs.get('epsilon', 1.e-6)
     
     inpainting = kwargs.get('inpainting', None)      # Only for quadratic penalization methods
-    
-    mask_data = ssh_initial.mask
+        
     ################################################################
     # 2. Preparing the SWOT data for filtering:
-
-    ##=================Preparing the SWOT data arrays===============
-
-    # 2.1. Obtain mask of data (ssh_initial):
-    mask_data = ssh_initial.mask
-    
-    if all(mask_data == False):
-        'Print mask problem: all False'
-        
-    # 2.2. Making SWOT array organized as (lon, lat) a.k.a., (x, y) a.k.a., (x_ac, x_al): 
-    
-    # Concept: x direction (x_ac) will always be smaller (in theory) than in y (x_al), so:
-    
-    indsx, indsy = lon.shape # lon chosen randomly, any variable ok
-    if indsx > indsy:
-        lon = np.transpose(lon)
-        lat = np.transpose(lat)
-        ssh_initial = np.transpose(ssh_initial)
-        mask_data = np.transpose(mask_data)
-
-    elif indsx == indsy:
-        print 'Problem'
-    
-    # 2.3. Check longitude in -180 : +180 format:
-    if any(xlo < 0 for xlo in lon):
-        lon[lon > 180] -= 360 
-
-    # 2.4. Flipping the SWOT array if necessary: 
-    # So that lon increases from left to right and lat from bottom to top 
-    # (depends on if pass is ascending or descending)
-
-    lon_dif = lon[1,0] - lon[0,0]
-    lat_dif = lat[0,1] - lat[0,0]
-
-    # Need to revise below , above already adapted for datasets oragnized as x,y instead of y,x
-    if (lat_dif<0):
-        print 'flipped variables created'
-        ## Ascending pass (pass 22 for in the fast-sampling phase)        
-        lon = np.flipud(lon)
-        lat = np.flipud(lat)
-        ssh_initial = np.flipud(ssh_initial)
-        mask_data = np.flipud(mask_data)
-        
-    elif (lon_dif<0):
-        print 'flipped variables created'
-        ## Descending pass (pass 9 for in the fast-sampling phase)
-        lon = np.fliplr(lon)
-        lat = np.fliplr(lat)
-        ssh_initial = np.fliplr(ssh_initial)
-        mask_data = np.fliplr(mask_data)
-        
-    # 2.5. Fixing the SWOT grid (regular longitude increments, i.e., no repeated nadir values)
-    # At a 1km resolution, should have a size of 121 across track (size of first dim after transposing)    
-
-    xx, yy = lon.shape
-    if (lon[(xx/2)-1, 0] == lon [xx/2, 0]): # this only happens
-        # when simulation is done with no gap
-        # if no gap simulaton case need to eliminate repeated nadir value
-        lon = np.delete(lon, (xx/2), axis=0)
-        lat = np.delete(lat, (xx/2), axis=0)
-        ssh_initial = np.delete(ssh_initial, (xx/2), axis=0)
-        x_ac = np.delete(x_ac, (xx/2), axis=0)
-        mask_data = np.delete(mask_data, (xx/2), axis=0)        
-        
-    # 2.6. Eliminating values at x_ac = 0.  (By now (in the code) the x_ac dimension (x) should be the first axis) 
-    if any(x_ac == 0):
-        x0 = np.where(x_ac==0)
-
-        lon = np.delete(lon, x0, axis=0)
-        lat = np.delete(lat, x0, axis=0)
-        SSH_model = np.delete(SSH_model, x0, axis=0)
-        SSH_obs = np.delete(SSH_obs, x0, axis=0)
-        x_ac = np.delete(x_ac, x0, axis=0)
-        mask_data = np.delete(mask_data, x0, axis=0)
-        
-    # 2.7. Masking the SWOT outputs
-    ## 2.7.1. Change masked values to 0:
-
-    ssh_initial[mask_data] = 0. 
-
-    ## 2.7.2. Converting variable to masked array
-    ssh_initial_ma = np.ma.masked_array(ssh_initial, mask_data)
-
-    if (method == 'penalization_order_1') | (method == 'penalization_order_3'):
-    
-        ## 2.8. Applying the gaussian filter:
-
-        sigma = 10 # --> this sigma?
-        ssh_initial_gausf = gaussian_with_nans(ssh_initial_ma, sigma)
-
-        ## 2.9. Assigning the gaussian filtered data to the gap:
-
-        ssh_initial_gap_full = ssh_initial_ma.copy()
-
-        ssh_initial_gap_full[mask_gap] = ssh_initial_gausf[mask_gap] # or leave it as ssh_initial_nogap.mask? and one variable less?
-    
-    # At this point we have obtained these variables:
-    # -ssh_initial: variable correctly arranged (xx, yy, with dims increasing in expected sense) and gap values = 0 (without them being masked)
-    # -ssh_initial_ma: gap masked, with mask values = 0
-    # For penalization filter methods, also:
-    # -ssh_initial_gausf: gaussian filtered variable
-    # -ssh_initial_gap_full: gap filled with gaussian filtered data
-
+    ssh_initial_r, lon_r, lat_r, x_ac_r, mask_data_r = prepare_data_for_filtering(ssh_initial, lon, lat, x_ac)
     
     ################################################################
     # 3. Applying the filter 
-
+    data = ssh_initial_r
+    
     if method == 'generic':
         ssh_filtered = nd.generic_filter(data, function=np.nanmean, footprint=parameter) # np.nanmean ok? # Remember footprint must be a matrix
 
@@ -352,15 +379,15 @@ def SWOTdenoise(datadir=None, filename=None **kwargs):
         ssh_filtered = gaussian_with_nans(data, parameter)
 
     elif method == 'penalization_order_1':
-        ssh_filtered, iter_number = penalization_filter(var=data, mask_of_data=mask_gap, var_obs=SSH_obs_ma, lambd=parameter, regularization_model=1)
+        ssh_filtered, iter_number = penalization_filter(var=data, mask_of_data=mask_data_r, var_obs=SSH_obs_ma, lambd=parameter, regularization_model=1)
 
     elif method == 'penalization_order_3':
-        ssh_filtered, iter_number = penalization_filter(var=data, mask_of_data=mask_gap, var_obs=SSH_obs_ma, lambd=parameter, regularization_model=3)
+        ssh_filtered, iter_number = penalization_filter(var=data, mask_of_data=mask_data_r, var_obs=SSH_obs_ma, lambd=parameter, regularization_model=3)
     
     else:
         print('Method not specified')
     
-    if inpainting = 'yes':
+    if inpainting == 'yes':
         ssh_filtered.mask = False
     
     ###############################################################
