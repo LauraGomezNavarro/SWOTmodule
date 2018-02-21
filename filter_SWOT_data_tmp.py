@@ -291,7 +291,7 @@ def penalization_filter(var, mask_of_data, var_obs, lambd=40, regularization_mod
 ################################################################
 # Main function:
 
-def SWOTdenoise(datadir=None, filename=None **kwargs):
+def SWOTdenoise(datadir=None, filename=None, **kwargs):
     # , method, parameter, inpainting='no',
     """
     Driver function. It is organized as follows:
