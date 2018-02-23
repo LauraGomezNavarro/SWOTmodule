@@ -2,6 +2,10 @@
 
 import numpy as np
 from netCDF4 import Dataset
+from scipy import ndimage as nd
+from scipy.interpolate import RectBivariateSpline
+from types import *
+import sys
 
 
 def read_data(filename, *args):
@@ -10,13 +14,12 @@ def read_data(filename, *args):
     fid = Dataset(filename)
     output = []
     for entry in args:
-        #print entry
-        output.append( np.array(fid.variables[entry]) )
+        output.append( fid.variables[entry][:] )
     fid.close()
     return tuple(output)
 
 
-def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d):
+def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d):
     """Write filtered SSH in output file."""
     
     # Output file name
@@ -24,7 +27,7 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d):
     filenameout = rootname+'_denoised.nc'
     
     # Read variables (not used before) in input file
-    time_r, x_al_r = read_data(filename, 'time', 'x_al')
+    x_al_r = read_data(filename, 'x_al')
     
     # Create output file
     fid = Dataset(filenameout, 'w', format='NETCDF4')
@@ -32,7 +35,7 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d):
     fid.creator_name = "SWOTdenoise module"  
 
     # Dimensions
-    time = fid.createDimension('time', len(time_r))
+    time = fid.createDimension('time', len(time_d))
     x_ac = fid.createDimension('x_ac', len(x_ac_d))
 
     # Create variables
@@ -61,7 +64,7 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d):
     vtime = fid.createVariable('time', 'f8', ('time'))
     vtime.long_name = "time from beginning of simulation" 
     vtime.units = "days"
-    vtime[:] = time_r
+    vtime[:] = time_d
 
     x_al = fid.createVariable('x_al', 'f8', ('time'))
     x_al.long_name = "Along track distance from the beginning of the pass" 
@@ -88,13 +91,118 @@ def copy_arrays(*args):
     output = []
     for entry in args:
         #print entry
-        output.append( np.copy(entry) )
+        output.append( entry.copy() )
     return tuple(output)
+
+def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'):
+    """
+    Fill the nadir gap in the middle of SWOT swath.
+    Longitude and latitude are interpolated linearly. For SSH, there are two options:
+    - method = 'fill_value': the gap is filled with the fill value of SSH masked array;
+    - method = 'interp': the gap is filled with a 2D, linear interpolation."""
+    
+    # Extend x_ac, positions of SWOT pixels across-track
+    nhsw     = len(x_ac)/2                                # number of pixels in half a swath
+    step     = abs(x_ac[nhsw+1]-x_ac[nhsw])               # x_ac step, constant
+    ins = np.arange(x_ac[nhsw-1], x_ac[nhsw], step)[1:]   # sequence to be inserted
+    x_ac_f = np.insert(x_ac, nhsw, ins)                   # insertion
+    nins = len(ins)                                       # length of inserted sequence
+    
+    # 2D arrays: lon, lat. Interpolation of regular grids.
+    lon_f = RectBivariateSpline(time, x_ac, lon)(time, x_ac_f)
+    lat_f = RectBivariateSpline(time, x_ac, lat)(time, x_ac_f)
+    
+    # SSH: interpolate or insert array of fill values, and preserve masked array characteristics
+    if method == 'interp':
+        ssh_f = np.ma.masked_values( RectBivariateSpline(time, x_ac, ssh)(time, x_ac_f), ssh.fill_value )
+    else:
+        ins_ssh = np.full( ( nins, len(time) ), ssh.fill_value, dtype=None )
+        ssh_f = np.ma.masked_values( np.insert( ssh, nhsw, ins_ssh, axis=1 ), ssh.fill_value )
+
+    return ssh_f, lon_f, lat_f, x_ac_f
+
+
+def gaussian_filter(ssh, lon, lat, x_ac, time, lambd, inpainting = False):
+    """Apply Gaussian filter on ssh. 'lambd' is the standard deviation of the Gaussian, i.e. the strength of the filter.
+    """
+    ssh_f, lon_f, lat_f, x_ac_f = fill_nadir_gap(ssh, lon, lat, x_ac, time)
+    ssh_d = gaussian_with_nans(ssh_f, lambd)
+    
+    if inpainting is True:
+        ssh_tmp, _, _, _ = fill_nadir_gap(ssh, lon, lat, x_ac, time, method='interp')
+        ssh_d = np.ma.array(ssh_d, mask = ssh_tmp.mask)
+    else:
+        ssh_d = np.ma.array(ssh_d, mask = ssh_f.mask)
+    
+    return ssh_d, lon_f, lat_f, x_ac_f, time
+
+def gaussian_with_nans(u, sigma):
+    """
+    Method to implement Gaussian filter on an image with gaps.
+    http://stackoverflow.com/questions/18697532/gaussian-filtering-a-image-with-nan-in-python
+    """
+    assert np.ma.any(u.mask), 'u must be a masked array'
+    mask = np.flatnonzero(u.mask)
+    
+    v = u.data.copy()
+    v.flat[mask] = 0
+    v[:] = nd.gaussian_filter(v ,sigma=sigma)
+
+    w = np.ones_like(u.data)
+    w.flat[mask] = 0
+    w[:] = nd.gaussian_filter(w, sigma=sigma)
+    
+    #v = np.ma.array(v, mask=u.mask)
+    w = np.clip( w, 1.e-8, 1.)
+
+    return v/w
+ 
+def boxcar_filter(ssh, lon, lat, x_ac, time, lambd, inpainting = False):
+    """Apply boxcar filter on ssh. 'lambd' is the footprint (width) of the box.
+    """
+    ssh_f, lon_f, lat_f, x_ac_f = fill_nadir_gap(ssh, lon, lat, x_ac, time)
+    ssh_d = boxcar_with_nans(ssh_f, lambd)
+    
+    if inpainting is True:
+        ssh_tmp, _, _, _ = fill_nadir_gap(ssh, lon, lat, x_ac, time, method='interp')
+        ssh_d = np.ma.array(ssh_d, mask = ssh_tmp.mask)
+    else:
+        ssh_d = np.ma.array(ssh_d, mask = ssh_f.mask)
+    
+    return ssh_d, lon_f, lat_f, x_ac_f, time
+
+def boxcar_with_nans(u, size):
+    """
+    Method to implement boxcar filter on an image with gaps.
+    http://stackoverflow.com/questions/18697532/gaussian-filtering-a-image-with-nan-in-python
+    """
+    assert np.ma.any(u.mask), 'u must be a masked array'
+    mask = np.flatnonzero(u.mask)
+    
+    v = u.data.copy()
+    v.flat[mask] = 0
+    v[:] = nd.generic_filter(v ,function=np.nanmean, size = size)
+
+    w = np.ones_like(u.data)
+    w.flat[mask] = 0
+    w[:] = nd.generic_filter(w, function=np.nanmean, size = size)
+    
+    #v = np.ma.array(v, mask=u.mask)
+    w = np.clip( w, 1.e-8, 1.)
+
+    return v/w
+ 
+
+
+def input_error():
+    print "You must provide a SWOT file name OR SSH, lon, lat, x_ac and time arrays. SSH must be a masked array."
+    sys.exit()
+
 
 ################################################################
 # Main function:
 
-def SWOTdenoise(**kwargs):
+def SWOTdenoise(*args, **kwargs):
     # , method, parameter, inpainting='no',
     """
     Driver function.  
@@ -105,65 +213,64 @@ def SWOTdenoise(**kwargs):
     
     # 1.1. Input data
     
-    filename = kwargs.get('filename', None)
-    
-    if filename is not None:
+    file_input = len(args) == 1
+    if file_input:
+        if type(args[0]) is not str: input_error()  
+        filename = args[0]
         swotfile = filename.split('/')[-1]
         swotdir = filename.split(swotfile)[0]
-        #listvar = ADT_obs_box, lon_box, lat_box, x_ac
-        listvar = 'SSH_obs', 'lon', 'lat', 'x_ac'
-        ssh, lon, lat, x_ac = read_data(filename, *listvar)      
+        listvar = 'SSH_obs', 'lon', 'lat', 'x_ac', 'time'
+        ssh, lon, lat, x_ac, time = read_data(filename, *listvar)      
     else:
-        ssh         = kwargs.get('data', None)
+        ssh         = kwargs.get('ssh', None)
         lon         = kwargs.get('lon', None)
         lat         = kwargs.get('lat', None)
         x_ac        = kwargs.get('x_ac', None)
-        #if any( (ssh.any(), lon.any(), lat, x_ac) ) is None:
-        if any( (isinstance(ssh, np.ndarray), isinstance(lon, np.ndarray), \
-                 isinstance(lat, np.ndarray), isinstance(x_ac, np.ndarray) ) ) is None: 
-            print "You must provide a SWOT file name or SSH, lon, lat, and x_ac arrays"
-            sys.exit()    
-        
-        
+        time        = kwargs.get('time', None)
+        if any( ( isinstance(ssh, NoneType), isinstance(lon, NoneType), isinstance(lat, NoneType), \
+                  isinstance(x_ac, NoneType), isinstance(time, NoneType) ) ):
+            input_error()
+           
     # 1.2. Denoising method
            
     method = kwargs.get('method', 'penalization_order_3')
     lambd = kwargs.get('lambda', 1.5)          # default value to be defined 
     itermax = kwargs.get('itermax', 500)
     epsilon = kwargs.get('epsilon', 1.e-6)
-    inpainting = kwargs.get('inpainting', None)  # Only for quadratic penalization methods
+    inpainting = kwargs.get('inpainting', False)  # Only for quadratic penalization methods
     
-    # 2. Perform filtering
+    # 2. Perform denoising
     
+    if method == 'do_nothing':
+        ssh_d, lon_d, lat_d, x_ac_d, time_d = copy_arrays(ssh, lon, lat, x_ac, time)
+        
     if method == 'boxcar':
-        pass
-#        ssh_filtered = boxcar_filter(ssh, lon, lat, lambda)
+        ssh_d, lon_d, lat_d, x_ac_d, time_d = boxcar_filter(ssh, lon, lat, x_ac, time, lambd)
 
     if method == 'gaussian_filter':
-        pass
-#        ssh_filtered = gaussian_filter(ssh, lon, lat, lambda)
+        ssh_d, lon_d, lat_d, x_ac_d, time_d = gaussian_filter(ssh, lon, lat, x_ac, time, lambd)
 
     if method == 'penalization_order_1':
         pass
-#        ssh_filtered = tickonov_filter_1(ssh, lon, lat, lambda, itermax, epsilon, inpainting=inpainting)
+#        ssh_filtered = tickonov_filter_1(ssh, lon, lat, lambd, itermax, epsilon, inpainting=inpainting)
 
     if method == 'penalization_order_3':
         pass
-#        ssh_filtered = tickonov_filter_3(ssh, lon, lat, lambda, itermax, epsilon, inpainting=inpainting)
-    ssh_d, lon_d, lat_d, x_ac_d = copy_arrays(ssh, lon, lat, x_ac)
+#        ssh_filtered = tickonov_filter_3(ssh, lon, lat, lambd, itermax, epsilon, inpainting=inpainting)
+
     
 
     # 3. Manage results
     
-    if filename is not None:
-        "copy initial file and replace SSH with filtered SSH. To be done."
-        filenameout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d)
+    if file_input:
+        """copy initial file and replace SSH with filtered SSH. To be done."""
+        filenameout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d)
         print 'Filtered field in ', filenameout
     else:
         if inpainting is None:
             return ssh_d
         else:
-            return ssh_d, lon_d, lat_d, x_ac_d
+            return ssh_d, lon_d, lat_d, x_ac_d, time_d
     
     
     
