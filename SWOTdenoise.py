@@ -17,7 +17,30 @@ from scipy import ndimage as nd
 from scipy.interpolate import RectBivariateSpline
 from types import *
 import sys
+from ConfigParser import ConfigParser
 
+
+def read_var_name(filename):
+    """Read in the config file the names of the variables in the input netcdf file.
+    
+    Parameters:
+    ----------
+    filename: input config file
+    
+    Returns:
+    -------
+    list of variables names in order: SSH, lon, lat, xac, xal
+    """
+    
+    config = ConfigParser()
+    config.read(filename)
+    ssh_name = config.get('VarName','ssh_name')
+    lon_name = config.get('VarName','lon_name')
+    lat_name = config.get('VarName','lat_name')
+    xac_name = config.get('VarName','xac_name')
+    xal_name = config.get('VarName','xal_name')
+    listvar = ssh_name, lon_name, lat_name, xac_name, xal_name
+    return listvar
 
 def read_data(filename, *args):
     """Read arrays from netcdf file.
@@ -237,6 +260,8 @@ def convolution_filter(ssh, param, method):
     elif method == 'gaussian':
         v[:] = nd.gaussian_filter(v ,sigma = param)
         w[:] = nd.gaussian_filter(w, sigma = param)
+    elif method == 'do_nothing':
+        pass
     else:
         write_error_and_exit(2)
     
@@ -331,7 +356,7 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
     
     # Gradient descent
     tau = np.min( ( 1./(1+8*param[0]), 1./(1+64*param[1]), 1./(1+512*param[2]) ) )  # Fix the tau factor for iterations
-    print tau
+    #print tau
     mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
     iteration = 1
     while (iteration < itermax):
@@ -358,6 +383,8 @@ def write_error_and_exit(nb):
         print "The filtering method is not correctly set."
     if nb == 3:
         print "For the variational regularization filter, lambd must be a 3-entry tuple."
+    if nb == 4:
+        print "For convolutional filters, lambd must be a number."
     sys.exit()
 
 
@@ -385,8 +412,9 @@ def SWOTdenoise(*args, **kwargs):
     The above-mentioned arguments are mandatory if no file name is given. They are exactly in the format provided by the SWOT simulator for ocean science version 3.0.
     
     Other keywords arguments are:
+    - config: name of the config file (default: SWOTdenoise.cfg)
     - method: gaussian, boxcar, or var_reg (default);
-    - param: number for gaussian and boxcar; 3-entry tuple for var_reg (default: (1.5, 0, 0); underinvestigation) ;
+    - param: number for gaussian and boxcar; 3-entry tuple for var_reg (default: (1.5, 0, 0); under investigation) ;
     - itermax: only for var_reg: maximum number of iterations in the gradient descent algortihm (default: 10000);
     - epsilon: only for var_reg: convergence criterium for the gradient descent algortihm (default: 1e-9);
     - inpainting: if True, the nadir gap is inpainted. If False, it is not and the returned SSH array is of the same shape as the original one. If the SWOTdenoise function is called using arrays (see above description) with inpainting=True, then it returns SSH, lon, and lat arrays. If it is called using arrays with inpainting=False, it returns only SSH, since lon and lat arrays are the same as for the input field. Default is False.
@@ -406,8 +434,10 @@ def SWOTdenoise(*args, **kwargs):
         filename = args[0]
         swotfile = filename.split('/')[-1]
         swotdir = filename.split(swotfile)[0]
-        listvar = 'SSH_obs', 'lon', 'lat', 'x_ac', 'time'
-        ssh, lon, lat, x_ac, time = read_data(filename, *listvar)      
+        #listvar = 'SSH_obs', 'lon', 'lat', 'x_ac', 'time'
+        configfilename = kwargs.get('config', 'SWOTdenoise.cfg')
+        listvar = read_var_name(filename = configfilename)
+        ssh, lon, lat, x_ac, time = read_data(filename, *listvar)
     else:
         ssh         = kwargs.get('ssh', None)
         lon         = kwargs.get('lon', None)
@@ -435,22 +465,25 @@ def SWOTdenoise(*args, **kwargs):
     # 2.2. Call method
     
     if method == 'do_nothing':
-        ssh_d, lon_d, lat_d, x_ac_d, time_d = copy_arrays(ssh, lon, lat, x_ac, time)
+        ssh_d = convolution_filter(ssh_f, param, method='do_nothing')
         
     if method == 'boxcar':
-        #ssh_d, lon_d, lat_d, x_ac_d, time_d = convolution_filter(ssh, lon, lat, x_ac, time, param, method='boxcar')
-        ssh_d = convolution_filter(ssh_f, param, method='boxcar')
+        if isinstance(param, int) or isinstance(param, float):
+            ssh_d = convolution_filter(ssh_f, param, method='boxcar')
+        else:
+            write_error_and_exit(4)
        
     if method == 'gaussian':
-        #ssh_d, lon_d, lat_d, x_ac_d, time_d = convolution_filter(ssh, lon, lat, x_ac, time, lambd, method='gaussian')
-        ssh_d = convolution_filter(ssh_f, param, method='gaussian')
+        if isinstance(param, int) or isinstance(param, float):
+            ssh_d = convolution_filter(ssh_f, param, method='gaussian')
+        else:
+            write_error_and_exit(4)
 
     if method == 'var_reg':
-        if len(param) is not 3:
+        if isinstance(param, tuple) and len(param) == 3:
+            ssh_d = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
+        else:
             write_error_and_exit(3)
-        #ssh_d = variational_regularization_filter(ssh, lon, lat, x_ac, time, param, \
-        #                                          itermax=itermax, epsilon=epsilon, inpainting=inpainting) 
-        ssh_d = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
         
     # 2.3. Handle inpainting option, and recover masked array
     
@@ -470,7 +503,6 @@ def SWOTdenoise(*args, **kwargs):
     # 3. Manage results
     
     if file_input:
-        """copy initial file and replace SSH with filtered SSH. To be done."""
         filenameout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time)
         print 'Filtered field in ', filenameout
     else:
