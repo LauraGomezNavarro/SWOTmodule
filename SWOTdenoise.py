@@ -349,6 +349,7 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
     Returns:
     -------
     ssh_d: 2D ndarray containing denoised ssh data (ssh_d is not a masked array!)
+    norm_array: Array of the norms calculated at each iteration to confirm convergence. #%
     """
     
     # Apply the Gaussian filter for preconditioning
@@ -359,6 +360,8 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
     #print tau
     mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
     iteration = 1
+    norm_array = [] #%
+
     while (iteration < itermax):
         iteration += 1
         ssh_tmp = np.copy(ssh_d)
@@ -367,11 +370,14 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
         incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)
         ssh_d = ssh_tmp + tau*incr
         norm = np.ma.sum(mask*incr*incr)/np.sum(mask)        #
+        norm_array.append(norm)     #%
         if norm < epsilon:
             break
-    print iteration, norm/epsilon
+    #print iteration, norm/epsilon #%
      
-    return ssh_d
+    norm_array = np.array(norm_array) #%
+
+    return ssh_d, norm_array  #%
 
 
 def write_error_and_exit(nb):
@@ -481,7 +487,7 @@ def SWOTdenoise(*args, **kwargs):
 
     if method == 'var_reg':
         if isinstance(param, tuple) and len(param) == 3:
-            ssh_d = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
+            ssh_d, norm = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
         else:
             write_error_and_exit(3)
         
