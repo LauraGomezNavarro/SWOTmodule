@@ -367,8 +367,8 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
         ssh_tmp = np.copy(ssh_d)
         lap_tmp = laplacian(ssh_tmp)
         bilap_tmp = laplacian(lap_tmp)
-        incr = tau * ( mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp) ) #%
-        ssh_d = ssh_tmp + incr #%
+        incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)  
+        ssh_d = ssh_tmp + tau*incr 
         norm = np.ma.sum(mask*incr*incr)/np.sum(mask)        #
         norm_array.append(norm)     #%
         if norm < epsilon:
