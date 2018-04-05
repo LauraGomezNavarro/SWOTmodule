@@ -63,7 +63,7 @@ def read_data(filename, *args):
     return tuple(output)
 
 
-def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d):
+def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
     """
     Write SSH in output file.
     
@@ -74,7 +74,7 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d):
     
     Returns:
     -------
-    Outpur file name.
+    Output filename.
     """
     
     # Output file name
@@ -92,6 +92,7 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d):
     # Dimensions
     time = fid.createDimension('time', len(time_d))
     x_ac = fid.createDimension('x_ac', len(x_ac_d))
+    iters = fid.createDimension('iters', iters_d) #%
 
     # Create variables
     lat = fid.createVariable('lat', 'f8', ('time','x_ac'))
@@ -136,6 +137,21 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d):
     ssh.units = "m"
     ssh.fill_value = ssh_d.fill_value
     ssh[:] = ssh_d
+
+    ssh.method   = method
+    ssh.param    = str(param)
+    ssh.iter_max = str(iter_max)
+    ssh.epsilon  = str(epsilon)
+
+    viters = fid.createVariable('iters', 'f8', ('iters'))
+    viters.long_name = "Number of iterations done in filtering"
+    viters[:] = np.arange(1, iters_d+1)
+
+    norm = fid.createVariable('norm', 'f8', ('iters'))
+    norm.long_name = "norm xxx"  
+    #ssh.units = "m" 
+    norm[:] = norm_d 
+
 
     fid.close()  # close the new file
     return filenameout
@@ -376,8 +392,8 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
     #print iteration, norm/epsilon #%
      
     norm_array = np.array(norm_array) #%
-
-    return ssh_d, norm_array  #%
+    
+    return ssh_d, norm_array, iteration  #%
 
 
 def write_error_and_exit(nb):
@@ -472,22 +488,28 @@ def SWOTdenoise(*args, **kwargs):
     
     if method == 'do_nothing':
         ssh_d = convolution_filter(ssh_f, param, method='do_nothing')
-        
+        norm  = np.nan
+        iters = 0
+
     if method == 'boxcar':
         if isinstance(param, int) or isinstance(param, float):
             ssh_d = convolution_filter(ssh_f, param, method='boxcar')
+            norm  = np.nan
+            iters = 0
         else:
             write_error_and_exit(4)
        
     if method == 'gaussian':
         if isinstance(param, int) or isinstance(param, float):
             ssh_d = convolution_filter(ssh_f, param, method='gaussian')
+            norm  = np.nan
+            iters = 0
         else:
             write_error_and_exit(4)
 
     if method == 'var_reg':
         if isinstance(param, tuple) and len(param) == 3:
-            ssh_d, norm = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
+            ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
         else:
             write_error_and_exit(3)
         
@@ -509,7 +531,7 @@ def SWOTdenoise(*args, **kwargs):
     # 3. Manage results
     
     if file_input:
-        filenameout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time)
+        filenameout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, iter_max, epsilon, iters)
         print 'Filtered field in ', filenameout
     else:
         if inpainting is True:
