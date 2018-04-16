@@ -18,7 +18,8 @@ from scipy.interpolate import RectBivariateSpline
 from types import *
 import sys
 from ConfigParser import ConfigParser
-
+import glob ##
+import os ## 
 
 def read_var_name(filename):
     """Read in the config file the names of the variables in the input netcdf file.
@@ -62,7 +63,6 @@ def read_data(filename, *args):
     fid.close()
     return tuple(output)
 
-
 def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
     """
     Write SSH in output file.
@@ -77,15 +77,28 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, pa
     Output filename.
     """
     
-    # Output file name
-    rootname = filename.split('.nc')[0]
-    filenameout = rootname+'_denoised.nc'
+    # Output filename
+    
+    # Create folder:
+    swotfile = filename.split('/')[-1]    ##
+    swotdir  = filename.split(swotfile)[0] ## 
+         
+    rootname    = swotfile.split('.nc')[0]   ##
+    filenameout = rootname + '_denoised.nc' ##
+    
+    ofldrs      = sorted(glob.glob(swotdir + method + '_test*'))
+    test_number = str(len(ofldrs) + 1).zfill(2)
+    filedirout  = swotdir + method + '_test' + test_number + '/' ##
+
+    os.mkdir(filedirout)  ## create folder for outputs
+    
+    fileout = filedirout + filenameout ##
     
     # Read variables (not used before) in input file
     x_al_r = read_data(filename, 'x_al')
     
     # Create output file
-    fid = Dataset(filenameout, 'w', format='NETCDF4')
+    fid = Dataset(fileout, 'w', format='NETCDF4') ##
     fid.description = "Filtered SWOT data"
     fid.creator_name = "SWOTdenoise module"  
 
@@ -154,7 +167,8 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, pa
 
 
     fid.close()  # close the new file
-    return filenameout
+    
+    return fileout #filenameout ##
     
     
 def copy_arrays(*args):
@@ -393,7 +407,8 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
      
     norm_array = np.array(norm_array) #%
     
-    return ssh_d, norm_array, iteration  #%
+    return ssh_d, norm_array, iteration-1  #%
+    # iteration -1, as the iteration at which it stops it does not filter
 
 
 def write_error_and_exit(nb):
@@ -485,6 +500,7 @@ def SWOTdenoise(*args, **kwargs):
     ssh_f, lon_f, lat_f, x_ac_f = fill_nadir_gap(ssh, lon, lat, x_ac, time)  # fill the nadir gap with masked fill values
     
     # 2.2. Call method
+    print 'Method: ' + method
     
     if method == 'do_nothing':
         ssh_d = convolution_filter(ssh_f, param, method='do_nothing')
@@ -531,8 +547,8 @@ def SWOTdenoise(*args, **kwargs):
     # 3. Manage results
     
     if file_input:
-        filenameout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, iter_max, epsilon, iters)
-        print 'Filtered field in ', filenameout
+        fileout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
+        print 'Filtered field in ', fileout  ##
     else:
         if inpainting is True:
             return ssh_d, lon_d, lat_d
