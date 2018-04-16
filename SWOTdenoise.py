@@ -63,36 +63,30 @@ def read_data(filename, *args):
     fid.close()
     return tuple(output)
 
-def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
+def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
     """
     Write SSH in output file.
     
     Parameters:
     ----------
-    filename: output filename
-    ssh_d, lon_d, lat_d, x_ac_d, time_d: standard SWOT data arrays. See SWOTdenoise function.
+    filename: input filename (directory + filename)
+    output_filename: 
+    - None by default: creates an ouput file in the same directory with the same filename + the extension _denoised.  ##
+    - otherwise can specify outfiledirectory + outputfilename .nc ('/out/x.nc')
+    ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d: standard SWOT data arrays. See SWOTdenoise function.
     
     Returns:
     -------
-    Output filename.
+    fileout: Output file directory + filename.
     """
     
     # Output filename
-    
-    # Create folder:
-    swotfile = filename.split('/')[-1]    ##
-    swotdir  = filename.split(swotfile)[0] ## 
-         
-    rootname    = swotfile.split('.nc')[0]   ##
-    filenameout = rootname + '_denoised.nc' ##
-    
-    ofldrs      = sorted(glob.glob(swotdir + method + '_test*'))
-    test_number = str(len(ofldrs) + 1).zfill(2)
-    filedirout  = swotdir + method + '_test' + test_number + '/' ##
-
-    os.mkdir(filedirout)  ## create folder for outputs
-    
-    fileout = filedirout + filenameout ##
+    if output_filename == 'None': #default
+        rootname = filename.split('.nc')[0]
+        fileout  = rootname + '_denoised.nc'
+        
+    else:
+        fileout = output_filename
     
     # Read variables (not used before) in input file
     x_al_r = read_data(filename, 'x_al')
@@ -162,9 +156,8 @@ def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, pa
 
     norm = fid.createVariable('norm', 'f8', ('iters'))
     norm.long_name = "norm xxx"  
-    #ssh.units = "m" 
+    norm.units = "m" 
     norm[:] = norm_d 
-
 
     fid.close()  # close the new file
     
@@ -249,9 +242,12 @@ def empty_nadir_gap(ssh_f, x_ac_f, ssh, x_ac):
     """
     
     ninter = len(x_ac_f)-len(x_ac)
-    nx = ( np.shape(ssh_f)[1] - ninter ) / 2
-    ssh_out = np.concatenate([ ssh_f.data[:,0:nx], ssh_f.data[:,-nx:] ], axis=1)
-    ssh_out = np.ma.array(ssh_out, mask = ssh.mask, fill_value = ssh.fill_value)
+    if ninter != 0: 
+        nx = ( np.shape(ssh_f)[1] - ninter ) / 2
+        ssh_out = np.concatenate([ ssh_f.data[:,0:nx], ssh_f.data[:,-nx:] ], axis=1)
+        ssh_out = np.ma.array(ssh_out, mask = ssh.mask, fill_value = ssh.fill_value)
+    else:
+        ssh_out = ssh_f
     return ssh_out
 
 
@@ -275,7 +271,6 @@ def convolution_filter(ssh, param, method):
     -------
     2D ndarray (not a masked array).
     """
-    
     assert np.ma.any(ssh.mask), 'u must be a masked array'
     mask = np.flatnonzero(ssh.mask)              # where u is masked
     v = ssh.data.copy()
@@ -436,7 +431,7 @@ def SWOTdenoise(*args, **kwargs):
     Parameters:
     ----------
     *args: name of file containing the SWOT SSH field to denoise (optional). Example of use:
-        SWOTdenoise(filename)
+        SWOTdenoise(filename, output_filename)  ##
         denoise data in file 'filename' and write an output file in the same directory. \n
         The output file is named 'foo_denoised.nc' if the input file name is 'foo.nc'.
         
@@ -465,10 +460,11 @@ def SWOTdenoise(*args, **kwargs):
     
     # 1.1. Input data
     
-    file_input = len(args) == 1
+    file_input = len(args) == 2 ##
     if file_input:
         if type(args[0]) is not str: write_error_and_exit(1) 
         filename = args[0]
+        output_filename = args[1] ##
         swotfile = filename.split('/')[-1]
         swotdir = filename.split(swotfile)[0]
         #listvar = 'SSH_obs', 'lon', 'lat', 'x_ac', 'time'
@@ -496,9 +492,8 @@ def SWOTdenoise(*args, **kwargs):
     # 2. Perform denoising
     
     # 2.1. Fill nadir gap with masked fill values
-    
     ssh_f, lon_f, lat_f, x_ac_f = fill_nadir_gap(ssh, lon, lat, x_ac, time)  # fill the nadir gap with masked fill values
-    
+
     # 2.2. Call method
     print 'Method: ' + method
     
@@ -547,7 +542,7 @@ def SWOTdenoise(*args, **kwargs):
     # 3. Manage results
     
     if file_input:
-        fileout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
+        fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
         print 'Filtered field in ', fileout  ##
     else:
         if inpainting is True:
