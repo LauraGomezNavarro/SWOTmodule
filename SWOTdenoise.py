@@ -20,6 +20,7 @@ import sys
 from ConfigParser import ConfigParser
 import glob ##
 import os ## 
+import xarray as xr
 
 def read_var_name(filename):
     """Read in the config file the names of the variables in the input netcdf file.
@@ -61,6 +62,19 @@ def read_data(filename, *args):
     for entry in args:
         output.append( fid.variables[entry][:] )
     fid.close()
+
+    """
+    # xarray:
+    xds = xr.open_dataset(filename, engine='netcdf4', lock=False)
+    output = []
+    for entry in args:
+        output.append(da.to_masked_array())
+        
+    
+    for varname, da in xds.data_vars.items():
+        output.append(da.to_masked_array())
+    """    
+   
     return tuple(output)
 
 def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
@@ -183,7 +197,8 @@ def copy_arrays(*args):
     return tuple(output)
 
 
-def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'):
+def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'): # removed time, not necessary, right? ##
+
     """
     Fill the nadir gap in the middle of SWOT swath.
     Longitude and latitude are interpolated linearly. For SSH, there are two options:
@@ -201,29 +216,45 @@ def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'):
     -------
     ssh_f, lon_f, lat_f, x_ac_f: Filled SSH (masked), lon, lat 2D arrays, and across-track coordinates.
     """
-    
     # Extend x_ac, positions of SWOT pixels across-track
-    nhsw     = len(x_ac)/2                                # number of pixels in half a swath
-    step     = abs(x_ac[nhsw+1]-x_ac[nhsw])               # x_ac step, constant
-    ins = np.arange(x_ac[nhsw-1], x_ac[nhsw], step)[1:]   # sequence to be inserted
+    nhsw = len(x_ac)/2                                    # number of pixels in half a swath
+    step = abs(x_ac[nhsw+1]-x_ac[nhsw])                   # x_ac step, constant
+    ins  = np.arange(x_ac[nhsw-1], x_ac[nhsw], step)[1:]  # sequence to be inserted
     nins = len(ins)                                       # length of inserted sequence
-    if nins==0:
-        return ssh, lon, lat, x_ac          # if nadir gap already filled, return input arrays
-    x_ac_f = np.insert(x_ac, nhsw, ins)                   # insertion
     
-    # 2D arrays: lon, lat. Interpolation of regular grids.
-    lon_f = RectBivariateSpline(time, x_ac, lon)(time, x_ac_f)
-    lat_f = RectBivariateSpline(time, x_ac, lat)(time, x_ac_f)
     
-    # SSH: interpolate or insert array of fill values, and preserve masked array characteristics
-    if method == 'interp':
-        ssh_f = np.ma.masked_values( RectBivariateSpline(time, x_ac, ssh)(time, x_ac_f), ssh.fill_value )
+    if nins == 0: # if nadir gap already filled, return input arrays
+        
+        lon_f  = lon
+        lat_f  = lat
+        x_ac_f = x_ac           
+        ssh_f  = ssh
+
     else:
-        ins_ssh = np.full( ( nins, len(time) ), ssh.fill_value, dtype='float32' )
-        ssh_f = np.ma.masked_values( np.insert( ssh, nhsw, ins_ssh, axis=1 ), ssh.fill_value )
+        x_ac_f = np.insert(x_ac, nhsw, ins)                   # insertion
+
+        # 2D arrays: lon, lat. Interpolation of regular grids.
+        lon_f = RectBivariateSpline(time, x_ac, lon)(time, x_ac_f)
+        lat_f = RectBivariateSpline(time, x_ac, lat)(time, x_ac_f)
+
+        ###### Explanation of RectBivariateSpline function use:
+        ## fx = RectBivariateSpline(time, x_ac, ssh)
+        ## fx(time, x_ac_f)
+
+        ## Chack if SSH is masked:
+        ## for box_dataset_v2, as nothing to mask, nt saved in netcdf as masked arrray
+        if np.ma.isMaskedArray(ssh) == False:
+            ssh = np.ma.asarray(ssh)
+            print 'ssh had to be masked'
+
+        # SSH: interpolate or insert array of fill values, and preserve masked array characteristics
+        if method == 'interp':
+            ssh_f = np.ma.masked_values( RectBivariateSpline(time, x_ac, ssh)(time, x_ac_f), ssh.fill_value )
+        else:
+            ins_ssh = np.full( ( nins, len(time) ), ssh.fill_value, dtype='float32' )
+            ssh_f = np.ma.masked_values( np.insert( ssh, nhsw, ins_ssh, axis=1 ), ssh.fill_value )
 
     return ssh_f, lon_f, lat_f, x_ac_f
-
 
 def empty_nadir_gap(ssh_f, x_ac_f, ssh, x_ac):
     """
@@ -436,7 +467,7 @@ def SWOTdenoise(*args, **kwargs):
         The output file is named 'foo_denoised.nc' if the input file name is 'foo.nc'.
         
     **kwargs include:
-    - ssh : input ssh array (2D)
+    - ssh : input ssh array (2D) in x_al(time), x_ac format (i.e., (lat, lon))
     - lon : input longitude array (2D)
     - lat : input latitude array (2D)
     - x_ac : input across-track coordinates (1D)
@@ -492,6 +523,13 @@ def SWOTdenoise(*args, **kwargs):
     # 2. Perform denoising
     
     # 2.1. Fill nadir gap with masked fill values
+    
+    ## Chack if SSH is masked:
+    ## for box_dataset_v2, as nothing to mask, nt saved in netcdf as masked arrray
+    if np.ma.isMaskedArray(ssh) == False:
+        ssh = np.ma.asarray(ssh)
+        print 'ssh had to be masked'
+    
     ssh_f, lon_f, lat_f, x_ac_f = fill_nadir_gap(ssh, lon, lat, x_ac, time)  # fill the nadir gap with masked fill values
 
     # 2.2. Call method
