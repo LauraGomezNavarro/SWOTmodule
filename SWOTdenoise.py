@@ -125,18 +125,6 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, n
     lon.long_name = "longitude" 
     lon.units = "degrees_east"
     lon[:] = lon_d
-
-    """
-    lon_nadir = fid.createVariable('lon_nadir', 'f8', ('time'))
-    lon_nadir.long_name = "longitude nadir" 
-    lon_nadir.units = "degrees_north"
-    lon_nadir = vlon_nadir
-
-    lat_nadir = fid.createVariable('lat_nadir', 'f8', ('time'))
-    lat_nadir.long_name = "latitude nadir" 
-    lat_nadir.units = "degrees_north"
-    lat_nadir[:] = vlat_nadir
-    """
        
     vtime = fid.createVariable('time', 'f8', ('time'))
     vtime.long_name = "time from beginning of simulation" 
@@ -197,7 +185,7 @@ def copy_arrays(*args):
     return tuple(output)
 
 
-def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'): # removed time, not necessary, right? ##
+def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'): 
 
     """
     Fill the nadir gap in the middle of SWOT swath.
@@ -511,7 +499,7 @@ def SWOTdenoise(*args, **kwargs):
         if any( ( isinstance(ssh, NoneType), isinstance(lon, NoneType), isinstance(lat, NoneType), \
                   isinstance(x_ac, NoneType), isinstance(time, NoneType) ) ):
             write_error_and_exit(1)
-           
+    
     # 1.2. Denoising method
            
     method = kwargs.get('method', 'var_reg')
@@ -529,9 +517,9 @@ def SWOTdenoise(*args, **kwargs):
     if np.ma.isMaskedArray(ssh) == False:
         ssh = np.ma.asarray(ssh)
         print 'ssh had to be masked'
-    
+        
     ssh_f, lon_f, lat_f, x_ac_f = fill_nadir_gap(ssh, lon, lat, x_ac, time)  # fill the nadir gap with masked fill values
-
+        
     # 2.2. Call method
     print 'Method: ' + method
     
@@ -574,9 +562,11 @@ def SWOTdenoise(*args, **kwargs):
         lon_d, lat_d, x_ac_d = copy_arrays(lon, lat, x_ac)
         
     # Set masked values to fill value
-    mask = ssh_d.mask
-    ssh_d.data[mask] = ssh_d.fill_value
-
+    
+    if np.ma.is_masked(ssh_d):# check if mask is not = False, because if so by default it selects the first row of the array and applies to it the fill_value
+        mask = ssh_d.mask
+        ssh_d.data[mask] = ssh_d.fill_value
+        
     # 3. Manage results
     
     if file_input:
