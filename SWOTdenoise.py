@@ -260,13 +260,16 @@ def empty_nadir_gap(ssh_f, x_ac_f, ssh, x_ac):
     2D masked array is of the same shape as the initial SWOT array.
     """
     
-    ninter = len(x_ac_f)-len(x_ac)
+    ninter = len(x_ac_f) - len(x_ac)
+    
     if ninter != 0: 
         nx = ( np.shape(ssh_f)[1] - ninter ) / 2
-        ssh_out = np.concatenate([ ssh_f.data[:,0:nx], ssh_f.data[:,-nx:] ], axis=1)
+        ssh_out = np.concatenate([ ssh_f[:,0:nx], ssh_f[:,-nx:] ], axis=1)
         ssh_out = np.ma.array(ssh_out, mask = ssh.mask, fill_value = ssh.fill_value)
+    # ## removed .data
     else:
         ssh_out = ssh_f
+    
     return ssh_out
 
 
@@ -321,9 +324,9 @@ def gradx(I):
     """
     
     m, n = I.shape
-    M = np.zeros([m,n])
+    M = np.ma.zeros([m,n])
 
-    M[0:-1,:] = np.subtract(I[1::,:], I[0:-1,:])
+    M[0:-1,:] = np.ma.subtract(I[1::,:], I[0:-1,:])
     return M
 
 
@@ -334,8 +337,8 @@ def grady(I):
     """
     
     m, n = I.shape
-    M = np.zeros([m,n])
-    M[:,0:-1] =  np.subtract(I[:,1::], I[:,0:-1])
+    M = np.ma.zeros([m,n])
+    M[:,0:-1] =  np.ma.subtract(I[:,1::], I[:,0:-1])
     return M
 
 
@@ -353,9 +356,9 @@ def div(px, py):
     Returns: 2D ndarray
     """
     m, n = px.shape
-    M = np.zeros([m,n])
-    Mx = np.zeros([m,n])
-    My = np.zeros([m,n])
+    M  = np.ma.zeros([m,n])
+    Mx = np.ma.zeros([m,n])
+    My = np.ma.zeros([m,n])
  
     Mx[1:m-1, :] = px[1:m-1, :] - px[0:m-2, :]
     Mx[0, :] = px[0, :]
