@@ -18,9 +18,7 @@ from scipy.interpolate import RectBivariateSpline
 from types import *
 import sys
 from ConfigParser import ConfigParser
-import glob ##
 import os ## 
-import xarray as xr
 
 def read_var_name(filename):
     """Read in the config file the names of the variables in the input netcdf file.
