@@ -60,7 +60,7 @@ def read_data(filename, *args):
     for entry in args:
         output.append( fid.variables[entry][:] )
     fid.close()
-
+    
     """
     # xarray:
     xds = xr.open_dataset(filename, engine='netcdf4', lock=False)
@@ -71,11 +71,12 @@ def read_data(filename, *args):
     
     for varname, da in xds.data_vars.items():
         output.append(da.to_masked_array())
-    """    
-   
+    """
+    
     return tuple(output)
 
-def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
+def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, method, param, iter_max, epsilon):
+#def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
     """
     Write SSH in output file.
     
@@ -150,14 +151,14 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, n
     ssh.iter_max = str(iter_max)
     ssh.epsilon  = str(epsilon)
 
-    viters = fid.createVariable('iters', 'f8', ('iters'))
-    viters.long_name = "Number of iterations done in filtering"
-    viters[:] = np.arange(1, iters_d+1)
+    #viters = fid.createVariable('iters', 'f8', ('iters'))
+    #viters.long_name = "Number of iterations done in filtering"
+    #viters[:] = np.arange(1, iters_d+1)
 
-    norm = fid.createVariable('norm', 'f8', ('iters'))
-    norm.long_name = "norm xxx"  
-    norm.units = "m" 
-    norm[:] = norm_d 
+    #norm = fid.createVariable('norm', 'f8', ('iters'))
+    #norm.long_name = "norm xxx"  
+    #norm.units = "m" 
+    #norm[:] = norm_d 
 
     fid.close()  # close the new file
     
@@ -208,9 +209,7 @@ def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'):
     ins  = np.arange(x_ac[nhsw-1], x_ac[nhsw], step)[1:]  # sequence to be inserted
     nins = len(ins)                                       # length of inserted sequence
     
-    
     if nins == 0: # if nadir gap already filled, return input arrays
-        
         lon_f  = lon
         lat_f  = lat
         x_ac_f = x_ac           
@@ -228,7 +227,6 @@ def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'):
         ## fx(time, x_ac_f)
 
         ## Chack if SSH is masked:
-        ## for box_dataset_v2, as nothing to mask, nt saved in netcdf as masked arrray
         if np.ma.isMaskedArray(ssh) == False:
             ssh = np.ma.asarray(ssh)
             print 'ssh had to be masked'
@@ -262,9 +260,9 @@ def empty_nadir_gap(ssh_f, x_ac_f, ssh, x_ac):
     
     if ninter != 0: 
         nx = ( np.shape(ssh_f)[1] - ninter ) / 2
+        #ssh_out = np.concatenate([ ssh_f.data[:,0:nx], ssh_f.data[:,-nx:] ], axis=1)
         ssh_out = np.concatenate([ ssh_f[:,0:nx], ssh_f[:,-nx:] ], axis=1)
         ssh_out = np.ma.array(ssh_out, mask = ssh.mask, fill_value = ssh.fill_value)
-    # ## removed .data
     else:
         ssh_out = ssh_f
     
@@ -354,7 +352,7 @@ def div(px, py):
     Returns: 2D ndarray
     """
     m, n = px.shape
-    M  = np.ma.zeros([m,n])
+    M = np.ma.zeros([m,n])
     Mx = np.ma.zeros([m,n])
     My = np.ma.zeros([m,n])
  
@@ -379,8 +377,76 @@ def laplacian(u):
     Ml = div(gradx(u), grady(u));
     return Ml
 
+def interval_param(lam, nsub):
+    """
+    Define a sequence of exponentially increasing parameters (weights) from 1 to lam.
+    This function is called by the regularization filter to accelerate the iterations when lam is high.
+    
+    Parameters:
+    ----------
+    lam: float, weight in the regularization filter
+    nsub: integer, number of intermediate weights
+    
+    Returns:
+    -------
+    a: 1D ndarray, sequence of increasing parameters
+    nsub: updated value if lam is smaller than nsub
+    """
+    
+    if nsub > lam:
+        nsub = int(lam)
+    if nsub > 1:
+        a = np.log(lam)
+        da = (a/(nsub-1))
+        a = np.arange(0,a+da,da)
+        a = np.exp(a)
+        a = np.round(a)
+    else:
+        a = np.array([lam])
+    return a, nsub
 
-def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
+def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
+    """
+    Perform iterations for solving the variational regularization.
+    
+    Parameters:
+    ----------
+    ssh: original image (masked array)
+    ssh_d: working image (2D ndarray)
+    param: parameters, weights of the cost function
+    itermax: maximum number of iterations in the gradient descent method.
+    epsilon: for convergence criterium.
+    
+    Returns:
+    -------
+    ssh_d: 2D ndarray containing denoised ssh data (ssh_d is not a masked array!)
+    ##norm_array: Array of the norms calculated at each iteration to confirm convergence.
+    """
+    
+    # Gradient descent
+    tau = np.min( ( 1./(1+8*param[0]), 1./(1+64*param[1]), 1./(1+512*param[2]) ) )  # Fix the tau factor for iterations
+    #print tau
+    mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
+    iteration = 1
+
+    while (iteration < itermax):
+        iteration += 1
+        ssh_tmp = np.copy(ssh_d)
+        lap_tmp = laplacian(ssh_tmp)
+        bilap_tmp = laplacian(lap_tmp)
+        incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)
+        incr = tau * incr
+        ssh_d = ssh_tmp + incr
+        #norm = np.ma.sum(mask*incr*incr)/np.sum(mask)     
+        norm = np.ma.max(np.abs(incr))
+        if norm < epsilon:
+            break
+    #print iteration, norm/epsilon
+    
+    return ssh_d
+    
+
+def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10., nsub=8):
     """
     Apply variational regularization filter. \n
     
@@ -390,41 +456,30 @@ def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
     param: 3-entry tuple for first, second, and third order terms of the cost function, respectively.
     itermax: maximum number of iterations in the gradient descent method.
     epsilon: for convergence criterium.
+    pc_method: convolution method for preconditioning.
+    pc_param: parameter for preconditioning method.
+    nsub: number of sub-divisions for the warm-start strategy of iterations.
     
     Returns:
     -------
     ssh_d: 2D ndarray containing denoised ssh data (ssh_d is not a masked array!)
-    norm_array: Array of the norms calculated at each iteration to confirm convergence. #%
     """
     
     # Apply the Gaussian filter for preconditioning
-    ssh_d = convolution_filter(ssh, 10., method = 'gaussian')         # output here is a simple ndarray
+    ssh_d = convolution_filter(ssh, pc_param, method = pc_method)         # output here is a simple ndarray
     
-    # Gradient descent
-    tau = np.min( ( 1./(1+8*param[0]), 1./(1+64*param[1]), 1./(1+512*param[2]) ) )  # Fix the tau factor for iterations
-    #print tau
-    mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
-    iteration = 1
-    norm_array = [] #%
-
-    while (iteration < itermax):
-        iteration += 1
-        ssh_tmp = np.copy(ssh_d)
-        lap_tmp = laplacian(ssh_tmp)
-        bilap_tmp = laplacian(lap_tmp)
-        incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)  
-        ssh_d = ssh_tmp + tau*incr 
-        norm = np.ma.sum(mask*incr*incr)/np.sum(mask)        #
-        norm_array.append(norm)     #%
-        if norm < epsilon:
-            break
-    #print iteration, norm/epsilon #%
+    npar = len(param)       # number of parameters
+    param_tmp = np.zeros(npar)
+    for ip in range(npar):
+        if param[ip] > 0:
+            param_sub, nsub_tmp = interval_param(param[ip], nsub)
+            for isub in range(nsub_tmp):
+                param_tmp[ip] = param_sub[isub]
+                eps_tmp = epsilon * 10**(nsub_tmp-isub-1)
+                #print 'loop: ',ip, isub, param_tmp, param_sub, eps_tmp
+                ssh_d = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
      
-    norm_array = np.array(norm_array) #%
-    
-    return ssh_d, norm_array, iteration-1  #%
-    # iteration -1, as the iteration at which it stops it does not filter
-
+    return ssh_d
 
 def write_error_and_exit(nb):
     """Function called in case of error, to guide the user towards appropriate adjustment."""
@@ -467,9 +522,12 @@ def SWOTdenoise(*args, **kwargs):
     - config: name of the config file (default: SWOTdenoise.cfg)
     - method: gaussian, boxcar, or var_reg (default);
     - param: number for gaussian and boxcar; 3-entry tuple for var_reg (default: (1.5, 0, 0); under investigation) ;
-    - itermax: only for var_reg: maximum number of iterations in the gradient descent algortihm (default: 10000);
-    - epsilon: only for var_reg: convergence criterium for the gradient descent algortihm (default: 1e-9);
     - inpainting: if True, the nadir gap is inpainted. If False, it is not and the returned SSH array is of the same shape as the original one. If the SWOTdenoise function is called using arrays (see above description) with inpainting=True, then it returns SSH, lon, and lat arrays. If it is called using arrays with inpainting=False, it returns only SSH, since lon and lat arrays are the same as for the input field. Default is False.
+    - itermax: only for var_reg: maximum number of iterations in the gradient descent algortihm (default: 2000);
+    - epsilon: only for var_reg: convergence criterium for the gradient descent algortihm (default: 1e-6);
+    - pc_method: only for var_reg: convolution method for preconditioning (default: gaussian);
+    - pc_param: only for var_reg: parameter for preconditioning method (default: 10);
+    - nsub: only for var_reg: number of sub-divisions for the warm-start strategy of iterations (default: 8).
     
     The algorithms are detailed in the scientific documentation.
 
@@ -500,14 +558,18 @@ def SWOTdenoise(*args, **kwargs):
         if any( ( isinstance(ssh, NoneType), isinstance(lon, NoneType), isinstance(lat, NoneType), \
                   isinstance(x_ac, NoneType), isinstance(time, NoneType) ) ):
             write_error_and_exit(1)
-    
-    # 1.2. Denoising method
+           
+    # 1.2. Denoising method and options
            
     method = kwargs.get('method', 'var_reg')
     param = kwargs.get('param', (1.5, 0, 0) )          # default value to be defined 
-    itermax = kwargs.get('itermax', 10000)
-    epsilon = kwargs.get('epsilon', 1.e-9)
     inpainting = kwargs.get('inpainting', False)
+    ## For variational regularization only
+    itermax = kwargs.get('itermax', 2000)              # ma
+    epsilon = kwargs.get('epsilon', 1.e-6)
+    pc_method = kwargs.get('pc_method', 'gaussian')
+    pc_param = kwargs.get('pc_param', 10.)
+    nsub = kwargs.get('nsub', 8)
     
     # 2. Perform denoising
     
@@ -547,7 +609,10 @@ def SWOTdenoise(*args, **kwargs):
 
     if method == 'var_reg':
         if isinstance(param, tuple) and len(param) == 3:
-            ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
+            ssh_d = variational_regularization_filter(ssh_f, param, \
+                                                      itermax=itermax, epsilon=epsilon, pc_method=pc_method, \
+                                                      pc_param=pc_param, nsub=nsub) 
+            #ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
         else:
             write_error_and_exit(3)
         
@@ -571,7 +636,8 @@ def SWOTdenoise(*args, **kwargs):
     # 3. Manage results
     
     if file_input:
-        fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
+        fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, method, param, itermax, epsilon) ##
+        #fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
         print 'Filtered field in ', fileout  ##
     else:
         if inpainting is True:
