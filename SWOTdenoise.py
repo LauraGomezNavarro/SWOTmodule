@@ -403,6 +403,7 @@ def interval_param(lam, nsub):
         a = np.round(a)
     else:
         a = np.array([lam])
+        nsub = 1
     return a, nsub
 
 def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
@@ -441,7 +442,7 @@ def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
         norm = np.ma.max(np.abs(incr))
         if norm < epsilon:
             break
-    #print iteration, norm/epsilon
+    print iteration, norm/epsilon
     
     return ssh_d
     
@@ -466,7 +467,8 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     """
     
     # Apply the Gaussian filter for preconditioning
-    ssh_d = convolution_filter(ssh, pc_param, method = pc_method)         # output here is a simple ndarray
+    if any(param) is not 0.:
+        ssh_d = convolution_filter(ssh, pc_param, method = pc_method)         # output here is a simple ndarray
     
     npar = len(param)       # number of parameters
     param_tmp = np.zeros(npar)
