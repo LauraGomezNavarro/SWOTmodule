@@ -377,14 +377,15 @@ def laplacian(u):
     Ml = div(gradx(u), grady(u));
     return Ml
 
-def interval_param(lam, nsub):
+def interval_param(lam, lam_start, nsub):
     """
-    Define a sequence of exponentially increasing parameters (weights) from 1 to lam.
+    Define a sequence of exponentially increasing parameters (weights) from lam_start to lam.
     This function is called by the regularization filter to accelerate the iterations when lam is high.
     
     Parameters:
     ----------
     lam: float, weight in the regularization filter
+    lam_start: float, inital lambda that varies depending on the order of the penalization (first: 1, second: 0.01, third: 0.0001)
     nsub: integer, number of intermediate weights
     
     Returns:
@@ -396,11 +397,13 @@ def interval_param(lam, nsub):
     if nsub > lam:
         nsub = int(lam)
     if nsub > 1:
-        a = np.log(lam)
-        da = (a/(nsub-1))
-        a = np.arange(0,a+da,da)
+        #a = np.log(lam)
+        #da = (a/(nsub-1))
+        #a = np.arange(0,a+da,da)
+        #a = np.exp(a)
+        #a = np.round(a)
+        a = np.linspace(np.log(lam_start), np.log(lam), nsub)
         a = np.exp(a)
-        a = np.round(a)
     else:
         a = np.array([lam])
         nsub = 1
