@@ -140,10 +140,10 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, m
     vx_ac.units = "km"
     vx_ac[:] = x_ac_d
 
-    ssh = fid.createVariable('SSH', 'f8', ('time','x_ac'))
+    ssh = fid.createVariable('SSH', 'f8', ('time','x_ac'), fill_value=ssh_d.fill_value)
     ssh.long_name = "SSH denoised" 
     ssh.units = "m"
-    ssh.fill_value = ssh_d.fill_value
+    #ssh.fill_value = ssh_d.fill_value
     ssh[:] = ssh_d
 
     ssh.method   = method
