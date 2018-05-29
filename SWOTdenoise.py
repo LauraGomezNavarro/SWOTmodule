@@ -2,7 +2,8 @@
 """The SWOTdenoise module is a toolbox developed specifically in preparation of the SWOT mission. It provides a toolbox to remove small-scale noise from SWOT data. The main function is SWOTdenoise (same name as the module itself), and for standard applications, the user should not need to call other module functions. Optionally, other functions that can be directly useful are read_data (to read data from a Netcdf file) and fill_nadir_gap: this function fills the lon and lat arrays in the SWOT nadir gap, and introduces fill values in the SSH array. Look at dedicated helps.
 
 # AUTHORS:
-Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3)
+Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3), Le Sommer, J. (1), Pascual, A. (2), Poel, N. (1), Monsimer, A. (1)
+
 (1) CNRS/UGA/IRD/G-INP, IGE, Grenoble, France
 (2) IMEDEA (CSIC-UIB), Esporles, Spain
 (3) CNRS/Univ. Bordeaux/B-INP, IMB, Bordeaux, France
@@ -18,7 +19,7 @@ from scipy.interpolate import RectBivariateSpline
 from types import *
 import sys
 from ConfigParser import ConfigParser
-import os ## 
+import os 
 
 def read_var_name(filename):
     """Read in the config file the names of the variables in the input netcdf file.
@@ -385,29 +386,25 @@ def interval_param(lam, lam_start, nsub):
     Parameters:
     ----------
     lam: float, weight in the regularization filter
-    lam_start: float, inital lambda that varies depending on the order of the penalization (first: 1, second: 0.01, third: 0.0001)
-    nsub: integer, number of intermediate weights
+    lam_start: float, inital lambda that varies depending on the order of the penalization (first: 1, second: 0.01, third: 0.001)
+    nsub: integer, number of intermediate weights (number of steps)  
     
     Returns:
     -------
     a: 1D ndarray, sequence of increasing parameters
-    nsub: updated value if lam is smaller than nsub
+    nsub: updated value if lam is smaller than lam_start 
     """
     
-    if nsub > lam:
-        nsub = int(lam)
-    if nsub > 1:
-        #a = np.log(lam)
-        #da = (a/(nsub-1))
-        #a = np.arange(0,a+da,da)
-        #a = np.exp(a)
-        #a = np.round(a)
+    if lam > lam_start:
         a = np.linspace(np.log(lam_start), np.log(lam), nsub)
         a = np.exp(a)
+        
     else:
-        a = np.array([lam])
+        a = np.array([lam_start])
         nsub = 1
-    return a, nsub
+        print('Careful! lambda chosen smaller than lam_start: ' + str(lam_start) + '.  lam_start applied in one step')
+        
+    return a, nsub    
 
 def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     """
@@ -475,15 +472,23 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     
     npar = len(param)       # number of parameters
     param_tmp = np.zeros(npar)
+    
+    lam_start = np.array(1., 0.01, 0.001)
+    
     for ip in range(npar):
-        if param[ip] > 0:
-            param_sub, nsub_tmp = interval_param(param[ip], nsub)
+        
+        if param[ip] > 0:  #modify to lam_start?                                             #a
+            param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)   #a
+            
             for isub in range(nsub_tmp):
                 param_tmp[ip] = param_sub[isub]
                 eps_tmp = epsilon * 10**(nsub_tmp-isub-1)
                 #print 'loop: ',ip, isub, param_tmp, param_sub, eps_tmp
                 ssh_d = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
-     
+        
+        else:
+            print 'Problem with param. array'
+            
     return ssh_d
 
 def write_error_and_exit(nb):
