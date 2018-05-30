@@ -442,7 +442,7 @@ def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
         norm = np.ma.max(np.abs(incr))
         if norm < epsilon:
             break
-    print iteration, norm/epsilon
+    print iteration, norm/epsilon #modify #a
     
     return ssh_d
     
@@ -473,7 +473,7 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     npar = len(param)       # number of parameters
     param_tmp = np.zeros(npar)
     
-    lam_start = np.array(1., 0.01, 0.001)
+    lam_start = np.array([1., 0.01, 0.001])
     
     for ip in range(npar):
         
@@ -488,6 +488,7 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
         
         else:
             print 'Problem with param. array'
+            print param[ip]
             
     return ssh_d
 
