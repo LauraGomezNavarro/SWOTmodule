@@ -9,7 +9,8 @@ Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3), Le Sommer,
 (3) CNRS/Univ. Bordeaux/B-INP, IMB, Bordeaux, France
 
 # HISTORY:
-- April 2018: version 1
+- April 2018: version 1 (_orig)
+- May 2018: version2
 """ 
 
 import numpy as np
@@ -76,8 +77,9 @@ def read_data(filename, *args):
     
     return tuple(output)
 
-def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, method, param, iter_max, epsilon):
-#def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
+#def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, method, param, iter_max, epsilon):
+def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
+
     """
     Write SSH in output file.
     
@@ -144,7 +146,6 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, m
     ssh = fid.createVariable('SSH', 'f8', ('time','x_ac'), fill_value=ssh_d.fill_value)
     ssh.long_name = "SSH denoised" 
     ssh.units = "m"
-    #ssh.fill_value = ssh_d.fill_value
     ssh[:] = ssh_d
 
     ssh.method   = method
@@ -152,18 +153,18 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, m
     ssh.iter_max = str(iter_max)
     ssh.epsilon  = str(epsilon)
 
-    #viters = fid.createVariable('iters', 'f8', ('iters'))
-    #viters.long_name = "Number of iterations done in filtering"
-    #viters[:] = np.arange(1, iters_d+1)
+    viters = fid.createVariable('iters', 'f8', ('iters'))
+    viters.long_name = "Number of iterations done in filtering"
+    viters[:] = np.arange(1, iters_d+1)
 
-    #norm = fid.createVariable('norm', 'f8', ('iters'))
-    #norm.long_name = "norm xxx"  
-    #norm.units = "m" 
-    #norm[:] = norm_d 
+    norm = fid.createVariable('norm', 'f8', ('iters'))
+    norm.long_name = "norm xxx"  
+    norm.units = "m" 
+    norm[:] = norm_d 
 
     fid.close()  # close the new file
     
-    return fileout #filenameout ##
+    return fileout 
     
     
 def copy_arrays(*args):
@@ -429,7 +430,8 @@ def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     #print tau
     mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
     iteration = 1
-
+    norm_array = [] #%
+    
     while (iteration < itermax):
         iteration += 1
         ssh_tmp = np.copy(ssh_d)
@@ -440,11 +442,17 @@ def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
         ssh_d = ssh_tmp + incr
         #norm = np.ma.sum(mask*incr*incr)/np.sum(mask)     
         norm = np.ma.max(np.abs(incr))
+        norm_array.append(norm) #%
+        
         if norm < epsilon:
             break
-    print iteration, norm/epsilon #modify #a
+    print 'Iteration reached: ' + str(iteration)
+    print 'norm/epsilon = ' + str(norm/epsilon) #a
     
-    return ssh_d
+    norm_array = np.array(norm_array) #%
+    
+    return ssh_d, norm_array, iteration-1  #%
+    # iteration -1, as the iteration at which it stops it does not filter
     
 
 def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10., nsub=8):
@@ -481,16 +489,17 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
             param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)   #a
             
             for isub in range(nsub_tmp):
+                
                 param_tmp[ip] = param_sub[isub]
                 eps_tmp = epsilon * 10**(nsub_tmp-isub-1)
                 #print 'loop: ',ip, isub, param_tmp, param_sub, eps_tmp
-                ssh_d = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
-        
+                ssh_d, norm, iters  = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
+                # always gives back norm and iters but the one finally saved in the netcdf is the final one (the one we want)    
         else:
-            print 'Problem with param. array'
+            print 'Parameter for regularization order: ' + str(ip + 1) + ', is 0?'
             print param[ip]
             
-    return ssh_d
+    return ssh_d, norm, iters
 
 def write_error_and_exit(nb):
     """Function called in case of error, to guide the user towards appropriate adjustment."""
@@ -620,9 +629,9 @@ def SWOTdenoise(*args, **kwargs):
 
     if method == 'var_reg':
         if isinstance(param, tuple) and len(param) == 3:
-            ssh_d = variational_regularization_filter(ssh_f, param, \
+            ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, \
                                                       itermax=itermax, epsilon=epsilon, pc_method=pc_method, \
-                                                      pc_param=pc_param, nsub=nsub) 
+                                                      pc_param=pc_param, nsub=nsub) ##
             #ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
         else:
             write_error_and_exit(3)
@@ -647,8 +656,8 @@ def SWOTdenoise(*args, **kwargs):
     # 3. Manage results
     
     if file_input:
-        fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, method, param, itermax, epsilon) ##
-        #fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
+        #fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, method, param, itermax, epsilon) ##
+        fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
         print 'Filtered field in ', fileout  ##
     else:
         if inpainting is True:
