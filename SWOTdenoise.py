@@ -486,15 +486,24 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     for ip in range(npar):
         
         if param[ip] > 0:  #modify to lam_start?                                             #a
-            param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)   #a
+            if nsub > 1:
+                param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)   #a
             
-            for isub in range(nsub_tmp):
-                
-                param_tmp[ip] = param_sub[isub]
-                eps_tmp = epsilon * 10**(nsub_tmp-isub-1)
-                #print 'loop: ',ip, isub, param_tmp, param_sub, eps_tmp
-                ssh_d, norm, iters  = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
-                # always gives back norm and iters but the one finally saved in the netcdf is the final one (the one we want)    
+                for isub in range(nsub_tmp):
+
+                    param_tmp[ip] = param_sub[isub]
+                    eps_tmp = epsilon * 10**(nsub_tmp-isub-1)
+                    #print 'loop: ',ip, isub, param_tmp, param_sub, eps_tmp
+                    ssh_d, norm, iters  = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
+                    # always gives back norm and iters but the one finally saved in the netcdf is the final one (the one we want) 
+            
+            elif nsub == 1: # case where lambda not applied by intervals
+                    param_tmp[ip] = param[ip]
+                    ssh_d, norm, iters, c_func = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon, itermax=itermax)
+            
+            else: 
+                print 'nsub error' 
+                         
         else:
             print 'Parameter for regularization order: ' + str(ip + 1) + ', is 0?'
             print param[ip]
