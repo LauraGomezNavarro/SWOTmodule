@@ -514,6 +514,44 @@ def write_error_and_exit(nb):
         print "For convolutional filters, lambd must be a number."
     sys.exit()
 
+def cost_function(hobs, h, param):
+    """
+    Function to obtain the cost-function calculated. (not used within the module, but useful to have it as related with the output of the module.
+    hobs = ssh_obs
+    h = filtered image
+    params = lambdas
+    """
+    if np.ma.isMaskedArray(hobs) == False:
+        hobs = np.ma.asarray(hobs)
+       
+    if np.ma.isMaskedArray(h) == False:
+        h = np.ma.array(h, mask = hobs.mask, fill_value = 1e9 )
+    # above to check to improve like with an assert or type
+    
+    gradx_h = gradx(h)
+    grady_h = grady(h)
+    gradx_h = np.ma.array(gradx_h, mask = hobs.mask, fill_value = 1e9 )
+    grady_h = np.ma.array(grady_h, mask = hobs.mask, fill_value = 1e9 )
+    grad_h  = gradx_h**2 + grady_h**2
+    
+    lap_h = laplacian(h)
+    lap_h = np.ma.array(lap_h, mask = hobs.mask, fill_value = 1e9 )
+
+    gradxlap_h = gradx(lap_h)
+    gradylap_h = grady(lap_h)
+    gradxlap_h = np.ma.array(gradxlap_h, mask = hobs.mask, fill_value = 1e9 )
+    gradylap_h = np.ma.array(gradylap_h, mask = hobs.mask, fill_value = 1e9 )
+    gradlap_h =  gradxlap_h**2 + gradylap_h**2
+    
+    c_func = 0.5 * ( np.nansum((h - hobs)**2) + (param[0]*np.nansum(grad_h)) + (param[1]*np.nansum(lap_h**2)) + (param[2]*np.nansum(gradlap_h)) )
+    
+    #print('1st term: ', str(np.nansum((h - hobs)**2)))
+    #print('2nd term: ', str(param[0]*np.nansum(grad_h)))
+    #print('3rd term: ', str(param[1]))
+    #print('4th term: ', str(param[2]))
+          
+    return c_func
+
 
 ################################################################
 # Main function:
