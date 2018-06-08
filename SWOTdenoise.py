@@ -523,7 +523,7 @@ def write_error_and_exit(nb):
         print "For convolutional filters, lambd must be a number."
     sys.exit()
 
-def cost_function(hobs, h, param):
+def cost_function(hobs, h, param, lon, lat, x_ac, time):
     """
     Function to obtain the cost-function calculated. (not used within the module, but useful to have it as related with the output of the module.
     hobs = ssh_obs
@@ -537,22 +537,25 @@ def cost_function(hobs, h, param):
         h = np.ma.array(h, mask = hobs.mask, fill_value = 1e9 )
     # above to check to improve like with an assert or type
     
-    gradx_h = gradx(h)
-    grady_h = grady(h)
-    gradx_h = np.ma.array(gradx_h, mask = hobs.mask, fill_value = 1e9 )
-    grady_h = np.ma.array(grady_h, mask = hobs.mask, fill_value = 1e9 )
+    h_derivs, _, _, _ = fill_nadir_gap(h, lon, lat, x_ac, time, method='fill_value')
+    # -->returns masked array, with the gap included, but masked!
+    
+    gradx_h = gradx(h_derivs)
+    grady_h = grady(h_derivs)
+    gradx_h = np.ma.array(gradx_h, mask = h_derivs.mask, fill_value = 1e9 )
+    grady_h = np.ma.array(grady_h, mask = h_derivs.mask, fill_value = 1e9 )
     grad_h  = gradx_h**2 + grady_h**2
     
-    lap_h = laplacian(h)
-    lap_h = np.ma.array(lap_h, mask = hobs.mask, fill_value = 1e9 )
+    lap_h = laplacian(h_derivs)
+    lap_h = np.ma.array(lap_h, mask = h_derivs.mask, fill_value = 1e9 )
 
     gradxlap_h = gradx(lap_h)
     gradylap_h = grady(lap_h)
-    gradxlap_h = np.ma.array(gradxlap_h, mask = hobs.mask, fill_value = 1e9 )
-    gradylap_h = np.ma.array(gradylap_h, mask = hobs.mask, fill_value = 1e9 )
+    gradxlap_h = np.ma.array(gradxlap_h, mask = h_derivs.mask, fill_value = 1e9 )
+    gradylap_h = np.ma.array(gradylap_h, mask = h_derivs.mask, fill_value = 1e9 )
     gradlap_h =  gradxlap_h**2 + gradylap_h**2
     
-    c_func = 0.5 * ( np.nansum((h - hobs)**2) + (param[0]*np.nansum(grad_h)) + (param[1]*np.nansum(lap_h**2)) + (param[2]*np.nansum(gradlap_h)) )
+    c_func = 0.5 * ( np.ma.sum((h - hobs)**2) + (param[0]*np.ma.sum(grad_h)) + (param[1]*np.ma.sum(lap_h**2)) + (param[2]*np.ma.sum(gradlap_h)) )
     
     #print('1st term: ', str(np.nansum((h - hobs)**2)))
     #print('2nd term: ', str(param[0]*np.nansum(grad_h)))
