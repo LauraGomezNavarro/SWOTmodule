@@ -1,7 +1,21 @@
 # SWOTmodule
 
-Working on making convergence faster, I realized that in the former version of the variational method, the final solution was essentially the solution after Gaussian preconditioning for many sets of parameters (in particular including orders 2 and 3). So I introduced a warm-start method.
+* Example notebooks:
 
-Notebook: 2018-05-21-ec-improve-varreg-convergence
+  * 2018-03-03-ec-discover-SWOTmodule.ipynb
 
-Unfortunately some functionalities appeared to be no more compatible with this new formulation, essentially in the corollary outputs norm and iter_max, because those are not unique anymore.
+  * 2018-04-18-lgn-discover-SWOTmodule.ipynb
+
+  * 2018-04-18-lgn-discover-SWOTmodule_box_dataset.ipynb
+
+  * 2018-05-21-ec-improve-varreg-convergence-merged.ipynb
+
+* SWOTdenoise.cfg: Configuration file called by SWOTdenoise.py.  Used to specigy the name of the variables of the input file to be filtered.
+
+* SWOTdenoise.py: Module to read SWOT data, filter it and save it in a new output file (or not)
+Working on making convergence faster, EC realized that in the former version of the variational method (SWOTdenoise_orig.py), the final solution was essentially the solution after Gaussian preconditioning for many sets of parameters (in particular including orders 2 and 3). So EC introduced a warm-start method.  See notebook: 2018-05-21-ec-improve-varreg-convergence.ipynb
+
+* SWOTdenoise_orig.py: Previous version of module.
+
+* first_order_penalization_another_version.py: another and older version of 
+the module
