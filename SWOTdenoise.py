@@ -1,5 +1,6 @@
 # SWOTdenoise.py
-"""The SWOTdenoise module is a toolbox developed specifically in preparation of the SWOT mission. It provides a toolbox to remove small-scale noise from SWOT data. The main function is SWOTdenoise (same name as the module itself), and for standard applications, the user should not need to call other module functions. Optionally, other functions that can be directly useful are read_data (to read data from a Netcdf file) and fill_nadir_gap: this function fills the lon and lat arrays in the SWOT nadir gap, and introduces fill values in the SSH array. Look at dedicated helps.
+"""
+The SWOTdenoise module is a toolbox developed specifically in preparation of the SWOT mission. It provides a toolbox to remove small-scale noise from SWOT data. The main function is SWOTdenoise (same name as the module itself), and for standard applications, the user should not need to call other module functions. Optionally, other functions that can be directly useful are read_data (to read data from a netcdf file) and fill_nadir_gap: this function fills the lon and lat arrays in the SWOT nadir gap, and introduces fill values in the SSH array. For more details look at the dedicated helps.
 
 # AUTHORS:
 Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3), Le Sommer, J. (1), Pascual, A. (2), Poel, N. (1), Monsimer, A. (1)
@@ -10,7 +11,8 @@ Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3), Le Sommer,
 
 # HISTORY:
 - April 2018: version 1 (_orig)
-- May 2018: version2
+- May 2018: version 2
+- Last update: 14/06/2018
 """ 
 
 import numpy as np
@@ -23,7 +25,8 @@ from ConfigParser import ConfigParser
 import os 
 
 def read_var_name(filename):
-    """Read in the config file the names of the variables in the input netcdf file.
+    """
+    Read in the config file the names of the variables in the input netcdf file.
     
     Parameters:
     ----------
@@ -45,7 +48,8 @@ def read_var_name(filename):
     return listvar
 
 def read_data(filename, *args):
-    """Read arrays from netcdf file.
+    """
+    Read arrays from netcdf file.
     
     Parameters:
     ----------
@@ -63,23 +67,9 @@ def read_data(filename, *args):
         output.append( fid.variables[entry][:] )
     fid.close()
     
-    """
-    # xarray:
-    xds = xr.open_dataset(filename, engine='netcdf4', lock=False)
-    output = []
-    for entry in args:
-        output.append(da.to_masked_array())
-        
-    
-    for varname, da in xds.data_vars.items():
-        output.append(da.to_masked_array())
-    """
-    
     return tuple(output)
 
-#def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, method, param, iter_max, epsilon):
 def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
-
     """
     Write SSH in output file.
     
@@ -87,7 +77,7 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, n
     ----------
     filename: input filename (directory + filename)
     output_filename: 
-    - None by default: creates an ouput file in the same directory with the same filename + the extension _denoised.  ##
+    - None by default: creates an ouput file in the same directory with the same filename + the extension _denoised.  
     - otherwise can specify outfiledirectory + outputfilename .nc ('/out/x.nc')
     ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d: standard SWOT data arrays. See SWOTdenoise function.
     
@@ -104,11 +94,11 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, n
     else:
         fileout = output_filename
     
-    # Read variables (not used before) in input file
+    # Read variables (not used before) in input file:
     x_al_r = read_data(filename, 'x_al')
     
-    # Create output file
-    fid = Dataset(fileout, 'w', format='NETCDF4') ##
+    # Create output file:
+    fid = Dataset(fileout, 'w', format='NETCDF4') 
     fid.description = "Filtered SWOT data"
     fid.creator_name = "SWOTdenoise module"  
 
@@ -292,7 +282,7 @@ def convolution_filter(ssh, param, method):
     2D ndarray (not a masked array).
     """
     assert np.ma.any(ssh.mask), 'u must be a masked array'
-    mask = np.flatnonzero(ssh.mask)              # where u is masked
+    mask = np.flatnonzero(ssh.mask)            # where u is masked
     v = ssh.data.copy()
     v.flat[mask] = 0                           # set masked values of data array to 0
     w = np.ones_like(ssh.data)
@@ -440,18 +430,18 @@ def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
         incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)
         incr = tau * incr
         ssh_d = ssh_tmp + incr
-        #norm = np.ma.sum(mask*incr*incr)/np.sum(mask)     
+        #norm = np.ma.sum(mask*incr*incr)/np.sum(mask)      # original norm used
         norm = np.ma.max(np.abs(incr))
-        norm_array.append(norm) #%
+        norm_array.append(norm) 
         
         if norm < epsilon:
             break
     print 'Iteration reached: ' + str(iteration)
-    print 'norm/epsilon = ' + str(norm/epsilon) #a
+    print 'norm/epsilon = ' + str(norm/epsilon) 
     
     norm_array = np.array(norm_array) #%
     
-    return ssh_d, norm_array, iteration-1  #%
+    return ssh_d, norm_array, iteration-1  
     # iteration -1, as the iteration at which it stops it does not filter
     
 
@@ -476,7 +466,7 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     
     # Apply the Gaussian filter for preconditioning
     if any(param) is not 0.:
-        ssh_d = convolution_filter(ssh, pc_param, method = pc_method)         # output here is a simple ndarray
+        ssh_d = convolution_filter(ssh, pc_param, method = pc_method)  # output here is a simple ndarray
     
     npar = len(param)       # number of parameters
     param_tmp = np.zeros(npar)
@@ -485,9 +475,9 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     
     for ip in range(npar):
         
-        if param[ip] > 0:  #modify to lam_start?                                             #a
+        if param[ip] > 0:                                      
             if nsub > 1:
-                param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)   #a
+                param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)  
             
                 for isub in range(nsub_tmp):
 
@@ -635,7 +625,7 @@ def SWOTdenoise(*args, **kwargs):
     param = kwargs.get('param', (1.5, 0, 0) )          # default value to be defined 
     inpainting = kwargs.get('inpainting', False)
     ## For variational regularization only
-    itermax = kwargs.get('itermax', 2000)              # ma
+    itermax = kwargs.get('itermax', 2000)              
     epsilon = kwargs.get('epsilon', 1.e-6)
     pc_method = kwargs.get('pc_method', 'gaussian')
     pc_param = kwargs.get('pc_param', 10.)
@@ -646,7 +636,6 @@ def SWOTdenoise(*args, **kwargs):
     # 2.1. Fill nadir gap with masked fill values
     
     ## Chack if SSH is masked:
-    ## for box_dataset_v2, as nothing to mask, nt saved in netcdf as masked arrray
     if np.ma.isMaskedArray(ssh) == False:
         ssh = np.ma.asarray(ssh)
         print 'ssh had to be masked'
@@ -666,6 +655,8 @@ def SWOTdenoise(*args, **kwargs):
             ssh_d = convolution_filter(ssh_f, param, method='boxcar')
             norm  = np.nan
             iters = 0
+            itermax = 'none'
+            epsilon = 'none'
         else:
             write_error_and_exit(4)
        
@@ -674,6 +665,8 @@ def SWOTdenoise(*args, **kwargs):
             ssh_d = convolution_filter(ssh_f, param, method='gaussian')
             norm  = np.nan
             iters = 0
+            itermax = 'none'
+            epsilon = 'none'
         else:
             write_error_and_exit(4)
 
@@ -681,8 +674,8 @@ def SWOTdenoise(*args, **kwargs):
         if isinstance(param, tuple) and len(param) == 3:
             ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, \
                                                       itermax=itermax, epsilon=epsilon, pc_method=pc_method, \
-                                                      pc_param=pc_param, nsub=nsub) ##
-            #ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
+                                                      pc_param=pc_param, nsub=nsub) 
+         
         else:
             write_error_and_exit(3)
         
@@ -706,9 +699,8 @@ def SWOTdenoise(*args, **kwargs):
     # 3. Manage results
     
     if file_input:
-        #fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, method, param, itermax, epsilon) ##
         fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
-        print 'Filtered field in ', fileout  ##
+        print 'Filtered field in ', fileout  
     else:
         if inpainting is True:
             return ssh_d, lon_d, lat_d
