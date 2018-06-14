@@ -1,18 +1,14 @@
 # SWOTdenoise.py
-"""
-The SWOTdenoise module is a toolbox developed specifically in preparation of the SWOT mission. It provides a toolbox to remove small-scale noise from SWOT data. The main function is SWOTdenoise (same name as the module itself), and for standard applications, the user should not need to call other module functions. Optionally, other functions that can be directly useful are read_data (to read data from a netcdf file) and fill_nadir_gap: this function fills the lon and lat arrays in the SWOT nadir gap, and introduces fill values in the SSH array. For more details look at the dedicated helps.
+"""The SWOTdenoise module is a toolbox developed specifically in preparation of the SWOT mission. It provides a toolbox to remove small-scale noise from SWOT data. The main function is SWOTdenoise (same name as the module itself), and for standard applications, the user should not need to call other module functions. Optionally, other functions that can be directly useful are read_data (to read data from a Netcdf file) and fill_nadir_gap: this function fills the lon and lat arrays in the SWOT nadir gap, and introduces fill values in the SSH array. Look at dedicated helps.
 
 # AUTHORS:
-Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3), Le Sommer, J. (1), Pascual, A. (2), Poel, N. (1), Monsimer, A. (1)
-
+Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3)
 (1) CNRS/UGA/IRD/G-INP, IGE, Grenoble, France
 (2) IMEDEA (CSIC-UIB), Esporles, Spain
 (3) CNRS/Univ. Bordeaux/B-INP, IMB, Bordeaux, France
 
 # HISTORY:
-- April 2018: version 1 (_orig)
-- May 2018: version 2
-- Last update: 14/06/2018
+- April 2018: version 1
 """ 
 
 import numpy as np
@@ -22,11 +18,10 @@ from scipy.interpolate import RectBivariateSpline
 from types import *
 import sys
 from ConfigParser import ConfigParser
-import os 
+
 
 def read_var_name(filename):
-    """
-    Read in the config file the names of the variables in the input netcdf file.
+    """Read in the config file the names of the variables in the input netcdf file.
     
     Parameters:
     ----------
@@ -48,8 +43,7 @@ def read_var_name(filename):
     return listvar
 
 def read_data(filename, *args):
-    """
-    Read arrays from netcdf file.
+    """Read arrays from netcdf file.
     
     Parameters:
     ----------
@@ -66,46 +60,38 @@ def read_data(filename, *args):
     for entry in args:
         output.append( fid.variables[entry][:] )
     fid.close()
-    
     return tuple(output)
 
-def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d):
+
+def write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time_d):
     """
     Write SSH in output file.
     
     Parameters:
     ----------
-    filename: input filename (directory + filename)
-    output_filename: 
-    - None by default: creates an ouput file in the same directory with the same filename + the extension _denoised.  
-    - otherwise can specify outfiledirectory + outputfilename .nc ('/out/x.nc')
-    ssh_d, lon_d, lat_d, x_ac_d, time_d, norm_d, method, param, iter_max, epsilon, iters_d: standard SWOT data arrays. See SWOTdenoise function.
+    filename: output filename
+    ssh_d, lon_d, lat_d, x_ac_d, time_d: standard SWOT data arrays. See SWOTdenoise function.
     
     Returns:
     -------
-    fileout: Output file directory + filename.
+    Outpur file name.
     """
     
-    # Output filename
-    if output_filename == 'None': #default
-        rootname = filename.split('.nc')[0]
-        fileout  = rootname + '_denoised.nc'
-        
-    else:
-        fileout = output_filename
+    # Output file name
+    rootname = filename.split('.nc')[0]
+    filenameout = rootname+'_denoised.nc'
     
-    # Read variables (not used before) in input file:
+    # Read variables (not used before) in input file
     x_al_r = read_data(filename, 'x_al')
     
-    # Create output file:
-    fid = Dataset(fileout, 'w', format='NETCDF4') 
+    # Create output file
+    fid = Dataset(filenameout, 'w', format='NETCDF4')
     fid.description = "Filtered SWOT data"
     fid.creator_name = "SWOTdenoise module"  
 
     # Dimensions
     time = fid.createDimension('time', len(time_d))
     x_ac = fid.createDimension('x_ac', len(x_ac_d))
-    iters = fid.createDimension('iters', iters_d) #%
 
     # Create variables
     lat = fid.createVariable('lat', 'f8', ('time','x_ac'))
@@ -117,6 +103,18 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, n
     lon.long_name = "longitude" 
     lon.units = "degrees_east"
     lon[:] = lon_d
+
+    """
+    lon_nadir = fid.createVariable('lon_nadir', 'f8', ('time'))
+    lon_nadir.long_name = "longitude nadir" 
+    lon_nadir.units = "degrees_north"
+    lon_nadir = vlon_nadir
+
+    lat_nadir = fid.createVariable('lat_nadir', 'f8', ('time'))
+    lat_nadir.long_name = "latitude nadir" 
+    lat_nadir.units = "degrees_north"
+    lat_nadir[:] = vlat_nadir
+    """
        
     vtime = fid.createVariable('time', 'f8', ('time'))
     vtime.long_name = "time from beginning of simulation" 
@@ -133,28 +131,14 @@ def write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time_d, n
     vx_ac.units = "km"
     vx_ac[:] = x_ac_d
 
-    ssh = fid.createVariable('SSH', 'f8', ('time','x_ac'), fill_value=ssh_d.fill_value)
+    ssh = fid.createVariable('SSH', 'f8', ('time','x_ac'))
     ssh.long_name = "SSH denoised" 
     ssh.units = "m"
+    ssh.fill_value = ssh_d.fill_value
     ssh[:] = ssh_d
 
-    ssh.method   = method
-    ssh.param    = str(param)
-    ssh.iter_max = str(iter_max)
-    ssh.epsilon  = str(epsilon)
-
-    viters = fid.createVariable('iters', 'f8', ('iters'))
-    viters.long_name = "Number of iterations done in filtering"
-    viters[:] = np.arange(1, iters_d+1)
-
-    norm = fid.createVariable('norm', 'f8', ('iters'))
-    norm.long_name = "norm xxx"  
-    norm.units = "m" 
-    norm[:] = norm_d 
-
     fid.close()  # close the new file
-    
-    return fileout 
+    return filenameout
     
     
 def copy_arrays(*args):
@@ -176,8 +160,7 @@ def copy_arrays(*args):
     return tuple(output)
 
 
-def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'): 
-
+def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'):
     """
     Fill the nadir gap in the middle of SWOT swath.
     Longitude and latitude are interpolated linearly. For SSH, there are two options:
@@ -195,42 +178,29 @@ def fill_nadir_gap(ssh, lon, lat, x_ac, time, method = 'fill_value'):
     -------
     ssh_f, lon_f, lat_f, x_ac_f: Filled SSH (masked), lon, lat 2D arrays, and across-track coordinates.
     """
-    # Extend x_ac, positions of SWOT pixels across-track
-    nhsw = len(x_ac)/2                                    # number of pixels in half a swath
-    step = abs(x_ac[nhsw+1]-x_ac[nhsw])                   # x_ac step, constant
-    ins  = np.arange(x_ac[nhsw-1], x_ac[nhsw], step)[1:]  # sequence to be inserted
-    nins = len(ins)                                       # length of inserted sequence
     
-    if nins == 0: # if nadir gap already filled, return input arrays
-        lon_f  = lon
-        lat_f  = lat
-        x_ac_f = x_ac           
-        ssh_f  = ssh
-
+    # Extend x_ac, positions of SWOT pixels across-track
+    nhsw     = len(x_ac)/2                                # number of pixels in half a swath
+    step     = abs(x_ac[nhsw+1]-x_ac[nhsw])               # x_ac step, constant
+    ins = np.arange(x_ac[nhsw-1], x_ac[nhsw], step)[1:]   # sequence to be inserted
+    nins = len(ins)                                       # length of inserted sequence
+    if nins==0:
+        return ssh, lon, lat, x_ac          # if nadir gap already filled, return input arrays
+    x_ac_f = np.insert(x_ac, nhsw, ins)                   # insertion
+    
+    # 2D arrays: lon, lat. Interpolation of regular grids.
+    lon_f = RectBivariateSpline(time, x_ac, lon)(time, x_ac_f)
+    lat_f = RectBivariateSpline(time, x_ac, lat)(time, x_ac_f)
+    
+    # SSH: interpolate or insert array of fill values, and preserve masked array characteristics
+    if method == 'interp':
+        ssh_f = np.ma.masked_values( RectBivariateSpline(time, x_ac, ssh)(time, x_ac_f), ssh.fill_value )
     else:
-        x_ac_f = np.insert(x_ac, nhsw, ins)                   # insertion
-
-        # 2D arrays: lon, lat. Interpolation of regular grids.
-        lon_f = RectBivariateSpline(time, x_ac, lon)(time, x_ac_f)
-        lat_f = RectBivariateSpline(time, x_ac, lat)(time, x_ac_f)
-
-        ###### Explanation of RectBivariateSpline function use:
-        ## fx = RectBivariateSpline(time, x_ac, ssh)
-        ## fx(time, x_ac_f)
-
-        ## Chack if SSH is masked:
-        if np.ma.isMaskedArray(ssh) == False:
-            ssh = np.ma.asarray(ssh)
-            print 'ssh had to be masked'
-
-        # SSH: interpolate or insert array of fill values, and preserve masked array characteristics
-        if method == 'interp':
-            ssh_f = np.ma.masked_values( RectBivariateSpline(time, x_ac, ssh)(time, x_ac_f), ssh.fill_value )
-        else:
-            ins_ssh = np.full( ( nins, len(time) ), ssh.fill_value, dtype='float32' )
-            ssh_f = np.ma.masked_values( np.insert( ssh, nhsw, ins_ssh, axis=1 ), ssh.fill_value )
+        ins_ssh = np.full( ( nins, len(time) ), ssh.fill_value, dtype='float32' )
+        ssh_f = np.ma.masked_values( np.insert( ssh, nhsw, ins_ssh, axis=1 ), ssh.fill_value )
 
     return ssh_f, lon_f, lat_f, x_ac_f
+
 
 def empty_nadir_gap(ssh_f, x_ac_f, ssh, x_ac):
     """
@@ -248,16 +218,10 @@ def empty_nadir_gap(ssh_f, x_ac_f, ssh, x_ac):
     2D masked array is of the same shape as the initial SWOT array.
     """
     
-    ninter = len(x_ac_f) - len(x_ac)
-    
-    if ninter != 0: 
-        nx = ( np.shape(ssh_f)[1] - ninter ) / 2
-        #ssh_out = np.concatenate([ ssh_f.data[:,0:nx], ssh_f.data[:,-nx:] ], axis=1)
-        ssh_out = np.concatenate([ ssh_f[:,0:nx], ssh_f[:,-nx:] ], axis=1)
-        ssh_out = np.ma.array(ssh_out, mask = ssh.mask, fill_value = ssh.fill_value)
-    else:
-        ssh_out = ssh_f
-    
+    ninter = len(x_ac_f)-len(x_ac)
+    nx = ( np.shape(ssh_f)[1] - ninter ) / 2
+    ssh_out = np.concatenate([ ssh_f.data[:,0:nx], ssh_f.data[:,-nx:] ], axis=1)
+    ssh_out = np.ma.array(ssh_out, mask = ssh.mask, fill_value = ssh.fill_value)
     return ssh_out
 
 
@@ -281,8 +245,9 @@ def convolution_filter(ssh, param, method):
     -------
     2D ndarray (not a masked array).
     """
+    
     assert np.ma.any(ssh.mask), 'u must be a masked array'
-    mask = np.flatnonzero(ssh.mask)            # where u is masked
+    mask = np.flatnonzero(ssh.mask)              # where u is masked
     v = ssh.data.copy()
     v.flat[mask] = 0                           # set masked values of data array to 0
     w = np.ones_like(ssh.data)
@@ -312,9 +277,9 @@ def gradx(I):
     """
     
     m, n = I.shape
-    M = np.ma.zeros([m,n])
+    M = np.zeros([m,n])
 
-    M[0:-1,:] = np.ma.subtract(I[1::,:], I[0:-1,:])
+    M[0:-1,:] = np.subtract(I[1::,:], I[0:-1,:])
     return M
 
 
@@ -325,8 +290,8 @@ def grady(I):
     """
     
     m, n = I.shape
-    M = np.ma.zeros([m,n])
-    M[:,0:-1] =  np.ma.subtract(I[:,1::], I[:,0:-1])
+    M = np.zeros([m,n])
+    M[:,0:-1] =  np.subtract(I[:,1::], I[:,0:-1])
     return M
 
 
@@ -344,9 +309,9 @@ def div(px, py):
     Returns: 2D ndarray
     """
     m, n = px.shape
-    M = np.ma.zeros([m,n])
-    Mx = np.ma.zeros([m,n])
-    My = np.ma.zeros([m,n])
+    M = np.zeros([m,n])
+    Mx = np.zeros([m,n])
+    My = np.zeros([m,n])
  
     Mx[1:m-1, :] = px[1:m-1, :] - px[0:m-2, :]
     Mx[0, :] = px[0, :]
@@ -369,83 +334,8 @@ def laplacian(u):
     Ml = div(gradx(u), grady(u));
     return Ml
 
-def interval_param(lam, lam_start, nsub):
-    """
-    Define a sequence of exponentially increasing parameters (weights) from lam_start to lam.
-    This function is called by the regularization filter to accelerate the iterations when lam is high.
-    
-    Parameters:
-    ----------
-    lam: float, weight in the regularization filter
-    lam_start: float, inital lambda that varies depending on the order of the penalization (first: 1, second: 0.01, third: 0.001)
-    nsub: integer, number of intermediate weights (number of steps)  
-    
-    Returns:
-    -------
-    a: 1D ndarray, sequence of increasing parameters
-    nsub: updated value if lam is smaller than lam_start 
-    """
-    
-    if lam > lam_start:
-        a = np.linspace(np.log(lam_start), np.log(lam), nsub)
-        a = np.exp(a)
-        
-    else:
-        a = np.array([lam_start])
-        nsub = 1
-        print('Careful! lambda chosen smaller than lam_start: ' + str(lam_start) + '.  lam_start applied in one step')
-        
-    return a, nsub    
 
-def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
-    """
-    Perform iterations for solving the variational regularization.
-    
-    Parameters:
-    ----------
-    ssh: original image (masked array)
-    ssh_d: working image (2D ndarray)
-    param: parameters, weights of the cost function
-    itermax: maximum number of iterations in the gradient descent method.
-    epsilon: for convergence criterium.
-    
-    Returns:
-    -------
-    ssh_d: 2D ndarray containing denoised ssh data (ssh_d is not a masked array!)
-    ##norm_array: Array of the norms calculated at each iteration to confirm convergence.
-    """
-    
-    # Gradient descent
-    tau = np.min( ( 1./(1+8*param[0]), 1./(1+64*param[1]), 1./(1+512*param[2]) ) )  # Fix the tau factor for iterations
-    #print tau
-    mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
-    iteration = 1
-    norm_array = [] #%
-    
-    while (iteration < itermax):
-        iteration += 1
-        ssh_tmp = np.copy(ssh_d)
-        lap_tmp = laplacian(ssh_tmp)
-        bilap_tmp = laplacian(lap_tmp)
-        incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)
-        incr = tau * incr
-        ssh_d = ssh_tmp + incr
-        #norm = np.ma.sum(mask*incr*incr)/np.sum(mask)      # original norm used
-        norm = np.ma.max(np.abs(incr))
-        norm_array.append(norm) 
-        
-        if norm < epsilon:
-            break
-    print 'Iteration reached: ' + str(iteration)
-    print 'norm/epsilon = ' + str(norm/epsilon) 
-    
-    norm_array = np.array(norm_array) #%
-    
-    return ssh_d, norm_array, iteration-1  
-    # iteration -1, as the iteration at which it stops it does not filter
-    
-
-def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10., nsub=8):
+def variational_regularization_filter(ssh, param, itermax=10000, epsilon=1.e-9):
     """
     Apply variational regularization filter. \n
     
@@ -455,9 +345,6 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     param: 3-entry tuple for first, second, and third order terms of the cost function, respectively.
     itermax: maximum number of iterations in the gradient descent method.
     epsilon: for convergence criterium.
-    pc_method: convolution method for preconditioning.
-    pc_param: parameter for preconditioning method.
-    nsub: number of sub-divisions for the warm-start strategy of iterations.
     
     Returns:
     -------
@@ -465,40 +352,29 @@ def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, p
     """
     
     # Apply the Gaussian filter for preconditioning
-    if any(param) is not 0.:
-        ssh_d = convolution_filter(ssh, pc_param, method = pc_method)  # output here is a simple ndarray
+    ssh_d = convolution_filter(ssh, 10., method = 'gaussian')         # output here is a simple ndarray
     
-    npar = len(param)       # number of parameters
-    param_tmp = np.zeros(npar)
-    
-    lam_start = np.array([1., 0.01, 0.001])
-    
-    for ip in range(npar):
-        
-        if param[ip] > 0:                                      
-            if nsub > 1:
-                param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)  
-            
-                for isub in range(nsub_tmp):
+    # Gradient descent
+    tau = np.min( ( 1./(1+8*param[0]), 1./(1+64*param[1]), 1./(1+512*param[2]) ) )  # Fix the tau factor for iterations
+    #print tau
+    mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
+    iteration = 1
+    while (iteration < itermax):
+        iteration += 1
+        ssh_tmp = np.copy(ssh_d)
+        lap_tmp = laplacian(ssh_tmp)
+        bilap_tmp = laplacian(lap_tmp)
+        incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)
+        incr = tau * incr
+        ssh_d = ssh_tmp + incr
+        #norm = np.ma.sum(mask*incr*incr)/np.sum(mask)        #
+        norm = np.ma.max(np.abs(incr))
+        if norm < epsilon:
+            break
+    print iteration, norm/epsilon
+     
+    return ssh_d
 
-                    param_tmp[ip] = param_sub[isub]
-                    eps_tmp = epsilon * 10**(nsub_tmp-isub-1)
-                    #print 'loop: ',ip, isub, param_tmp, param_sub, eps_tmp
-                    ssh_d, norm, iters  = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
-                    # always gives back norm and iters but the one finally saved in the netcdf is the final one (the one we want) 
-            
-            elif nsub == 1: # case where lambda not applied by intervals
-                    param_tmp[ip] = param[ip]
-                    ssh_d, norm, iters, c_func = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon, itermax=itermax)
-            
-            else: 
-                print 'nsub error' 
-                         
-        else:
-            print 'Parameter for regularization order: ' + str(ip + 1) + ', is 0?'
-            print param[ip]
-            
-    return ssh_d, norm, iters
 
 def write_error_and_exit(nb):
     """Function called in case of error, to guide the user towards appropriate adjustment."""
@@ -513,47 +389,6 @@ def write_error_and_exit(nb):
         print "For convolutional filters, lambd must be a number."
     sys.exit()
 
-def cost_function(hobs, h, param, lon, lat, x_ac, time):
-    """
-    Function to obtain the cost-function calculated. (not used within the module, but useful to have it as related with the output of the module.
-    hobs = ssh_obs
-    h = filtered image
-    params = lambdas
-    """
-    if np.ma.isMaskedArray(hobs) == False:
-        hobs = np.ma.asarray(hobs)
-       
-    if np.ma.isMaskedArray(h) == False:
-        h = np.ma.array(h, mask = hobs.mask, fill_value = 1e9 )
-    # above to check to improve like with an assert or type
-    
-    h_derivs, _, _, _ = fill_nadir_gap(h, lon, lat, x_ac, time, method='fill_value')
-    # -->returns masked array, with the gap included, but masked!
-    
-    gradx_h = gradx(h_derivs)
-    grady_h = grady(h_derivs)
-    gradx_h = np.ma.array(gradx_h, mask = h_derivs.mask, fill_value = 1e9 )
-    grady_h = np.ma.array(grady_h, mask = h_derivs.mask, fill_value = 1e9 )
-    grad_h  = gradx_h**2 + grady_h**2
-    
-    lap_h = laplacian(h_derivs)
-    lap_h = np.ma.array(lap_h, mask = h_derivs.mask, fill_value = 1e9 )
-
-    gradxlap_h = gradx(lap_h)
-    gradylap_h = grady(lap_h)
-    gradxlap_h = np.ma.array(gradxlap_h, mask = h_derivs.mask, fill_value = 1e9 )
-    gradylap_h = np.ma.array(gradylap_h, mask = h_derivs.mask, fill_value = 1e9 )
-    gradlap_h =  gradxlap_h**2 + gradylap_h**2
-    
-    c_func = 0.5 * ( np.ma.sum((h - hobs)**2) + (param[0]*np.ma.sum(grad_h)) + (param[1]*np.ma.sum(lap_h**2)) + (param[2]*np.ma.sum(gradlap_h)) )
-    
-    #print('1st term: ', str(np.nansum((h - hobs)**2)))
-    #print('2nd term: ', str(param[0]*np.nansum(grad_h)))
-    #print('3rd term: ', str(param[1]))
-    #print('4th term: ', str(param[2]))
-          
-    return c_func
-
 
 ################################################################
 # Main function:
@@ -566,12 +401,12 @@ def SWOTdenoise(*args, **kwargs):
     Parameters:
     ----------
     *args: name of file containing the SWOT SSH field to denoise (optional). Example of use:
-        SWOTdenoise(filename, output_filename)  ##
+        SWOTdenoise(filename)
         denoise data in file 'filename' and write an output file in the same directory. \n
         The output file is named 'foo_denoised.nc' if the input file name is 'foo.nc'.
         
     **kwargs include:
-    - ssh : input ssh array (2D) in x_al(time), x_ac format (i.e., (lat, lon))
+    - ssh : input ssh array (2D)
     - lon : input longitude array (2D)
     - lat : input latitude array (2D)
     - x_ac : input across-track coordinates (1D)
@@ -582,12 +417,9 @@ def SWOTdenoise(*args, **kwargs):
     - config: name of the config file (default: SWOTdenoise.cfg)
     - method: gaussian, boxcar, or var_reg (default);
     - param: number for gaussian and boxcar; 3-entry tuple for var_reg (default: (1.5, 0, 0); under investigation) ;
+    - itermax: only for var_reg: maximum number of iterations in the gradient descent algortihm (default: 10000);
+    - epsilon: only for var_reg: convergence criterium for the gradient descent algortihm (default: 1e-9);
     - inpainting: if True, the nadir gap is inpainted. If False, it is not and the returned SSH array is of the same shape as the original one. If the SWOTdenoise function is called using arrays (see above description) with inpainting=True, then it returns SSH, lon, and lat arrays. If it is called using arrays with inpainting=False, it returns only SSH, since lon and lat arrays are the same as for the input field. Default is False.
-    - itermax: only for var_reg: maximum number of iterations in the gradient descent algortihm (default: 2000);
-    - epsilon: only for var_reg: convergence criterium for the gradient descent algortihm (default: 1e-6);
-    - pc_method: only for var_reg: convolution method for preconditioning (default: gaussian);
-    - pc_param: only for var_reg: parameter for preconditioning method (default: 10);
-    - nsub: only for var_reg: number of sub-divisions for the warm-start strategy of iterations (default: 8).
     
     The algorithms are detailed in the scientific documentation.
 
@@ -598,11 +430,10 @@ def SWOTdenoise(*args, **kwargs):
     
     # 1.1. Input data
     
-    file_input = len(args) == 2 ##
+    file_input = len(args) == 1
     if file_input:
         if type(args[0]) is not str: write_error_and_exit(1) 
         filename = args[0]
-        output_filename = args[1] ##
         swotfile = filename.split('/')[-1]
         swotdir = filename.split(swotfile)[0]
         #listvar = 'SSH_obs', 'lon', 'lat', 'x_ac', 'time'
@@ -619,63 +450,40 @@ def SWOTdenoise(*args, **kwargs):
                   isinstance(x_ac, NoneType), isinstance(time, NoneType) ) ):
             write_error_and_exit(1)
            
-    # 1.2. Denoising method and options
+    # 1.2. Denoising method
            
     method = kwargs.get('method', 'var_reg')
     param = kwargs.get('param', (1.5, 0, 0) )          # default value to be defined 
+    itermax = kwargs.get('itermax', 10000)
+    epsilon = kwargs.get('epsilon', 1.e-10)
     inpainting = kwargs.get('inpainting', False)
-    ## For variational regularization only
-    itermax = kwargs.get('itermax', 2000)              
-    epsilon = kwargs.get('epsilon', 1.e-6)
-    pc_method = kwargs.get('pc_method', 'gaussian')
-    pc_param = kwargs.get('pc_param', 10.)
-    nsub = kwargs.get('nsub', 8)
     
     # 2. Perform denoising
     
     # 2.1. Fill nadir gap with masked fill values
     
-    ## Chack if SSH is masked:
-    if np.ma.isMaskedArray(ssh) == False:
-        ssh = np.ma.asarray(ssh)
-        print 'ssh had to be masked'
-        
     ssh_f, lon_f, lat_f, x_ac_f = fill_nadir_gap(ssh, lon, lat, x_ac, time)  # fill the nadir gap with masked fill values
-        
+    
     # 2.2. Call method
-    print 'Method: ' + method
     
     if method == 'do_nothing':
         ssh_d = convolution_filter(ssh_f, param, method='do_nothing')
-        norm  = np.nan
-        iters = 0
-
+        
     if method == 'boxcar':
         if isinstance(param, int) or isinstance(param, float):
             ssh_d = convolution_filter(ssh_f, param, method='boxcar')
-            norm  = np.nan
-            iters = 0
-            itermax = 'none'
-            epsilon = 'none'
         else:
             write_error_and_exit(4)
        
     if method == 'gaussian':
         if isinstance(param, int) or isinstance(param, float):
             ssh_d = convolution_filter(ssh_f, param, method='gaussian')
-            norm  = np.nan
-            iters = 0
-            itermax = 'none'
-            epsilon = 'none'
         else:
             write_error_and_exit(4)
 
     if method == 'var_reg':
         if isinstance(param, tuple) and len(param) == 3:
-            ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, \
-                                                      itermax=itermax, epsilon=epsilon, pc_method=pc_method, \
-                                                      pc_param=pc_param, nsub=nsub) 
-         
+            ssh_d = variational_regularization_filter(ssh_f, param, itermax=itermax, epsilon=epsilon) 
         else:
             write_error_and_exit(3)
         
@@ -691,16 +499,14 @@ def SWOTdenoise(*args, **kwargs):
         lon_d, lat_d, x_ac_d = copy_arrays(lon, lat, x_ac)
         
     # Set masked values to fill value
-    
-    if np.ma.is_masked(ssh_d):# check if mask is not = False, because if so by default it selects the first row of the array and applies to it the fill_value
-        mask = ssh_d.mask
-        ssh_d.data[mask] = ssh_d.fill_value
-        
+    mask = ssh_d.mask
+    ssh_d.data[mask] = ssh_d.fill_value
+
     # 3. Manage results
     
     if file_input:
-        fileout = write_data(filename, output_filename, ssh_d, lon_d, lat_d, x_ac_d, time, norm, method, param, itermax, epsilon, iters) ##
-        print 'Filtered field in ', fileout  
+        filenameout = write_data(filename, ssh_d, lon_d, lat_d, x_ac_d, time)
+        print 'Filtered field in ', filenameout
     else:
         if inpainting is True:
             return ssh_d, lon_d, lat_d
