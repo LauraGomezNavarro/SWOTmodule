@@ -18,7 +18,8 @@
 Working on making convergence faster, EC realized that in the former version of the variational method (SWOTdenoise_orig.py), the final solution was essentially the solution after Gaussian preconditioning for many sets of parameters (in particular including orders 2 and 3). So EC introduced a warm-start method.  See notebook: 2018-05-21-ec-improve-varreg-convergence.ipynb
 
 * Example data:
+The two examples below are SWOT simulated passes from the NAtl60 model, generated for the fast-sampling phase in the western Mediterranean Sea.
 
-  * sfs
+  * MED_1km_nogap_JAS12_swotFastPhase_BOX_c01_p009_v2.nc: example SWOT dataset subregion (box_dataset) used in paper Gomez-Navarro et al., in prep.
   
-  * sfs
+  * MED_fastPhase_1km_swotFAST_c01_p009.nc: example SWOT dataset directly out of SWOT simulator (v xxx)
