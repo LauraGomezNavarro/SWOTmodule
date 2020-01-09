@@ -372,34 +372,6 @@ def laplacian(u):
     Ml = div(gradx(u), grady(u));
     return Ml
 
-def interval_param(lam, lam_start, nsub):
-    """
-    Define a sequence of exponentially increasing parameters (weights) from lam_start to lam.
-    This function is called by the regularization filter to accelerate the iterations when lam is high.
-    
-    Parameters:
-    ----------
-    lam: float, weight in the regularization filter
-    lam_start: float, inital lambda that varies depending on the order of the penalization (first: 1, second: 0.01, third: 0.001)
-    nsub: integer, number of intermediate weights (number of steps)  
-    
-    Returns:
-    -------
-    a: 1D ndarray, sequence of increasing parameters
-    nsub: updated value if lam is smaller than lam_start 
-    """
-    
-    if lam > lam_start:
-        a = np.linspace(np.log(lam_start), np.log(lam), nsub)
-        a = np.exp(a)
-        
-    else:
-        a = np.array([lam_start])
-        nsub = 1
-        print('Careful! lambda chosen smaller than lam_start: ' + str(lam_start) + '.  lam_start applied in one step')
-        
-    return a, nsub    
-
 def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     """
         Perform iterations for solving the variational regularization using accelerated Gradient descent
@@ -429,31 +401,31 @@ def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     tau =   1./(scal_data+8*param[0]+64*param[1]+512*param[2])  # Fix the tau factor for iterations
     
     #print tau
-    mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
-    iteration = 0
+    mask       = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
+    iteration  = 0
     norm_array = [] #%
-    cost=np.ndarray((itermax,),float)
-    #print(len(cost))
-    ssh_y = np.copy(ssh_d)
-    t=1.
+    cost       = np.ndarray((itermax,),float)
+    ssh_y      = np.copy(ssh_d)
+    t          = 1.
+    
     while (iteration < itermax):
 
-        lap_y = laplacian(ssh_y)
-        bilap_y = laplacian(lap_y)
+        lap_y    = laplacian(ssh_y)
+        bilap_y  = laplacian(lap_y)
         trilap_y = laplacian(bilap_y)
 
         #FISTA acceleration
         incr = mask*(ssh.data-ssh_y)*scal_data + param[0]*lap_y - param[1]*bilap_y+param[2]*trilap_y
         ssh_tmp = ssh_y + tau *incr
      
-        t0=t;
-        t=(1+np.sqrt(1+4*np.power(t0,2)))/2
-        ssh_y=ssh_tmp+(t0-1.)/t*(ssh_tmp-ssh_d)
+        t0 = t;
+        t = (1 + np.sqrt(1 + 4*np.power(t0,2))) / 2
+        ssh_y = ssh_tmp + (t0 - 1.) / t*(ssh_tmp-ssh_d)
         
         norm = np.ma.max(np.abs(ssh_tmp-ssh_d))
         ssh_d = np.copy(ssh_tmp)
-        #Can be removed:
-        cost[iteration]=cost_function(mask, ssh.data, ssh_d, param_orig)
+        # Can be removed:
+        cost[iteration] = cost_function(mask, ssh.data, ssh_d, param_orig)
         iteration += 1
         norm_array.append(norm)
         
@@ -466,7 +438,6 @@ def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     
     return ssh_d, norm_array, iteration, cost
 # iteration -1, as the iteration at which it stops it does not filter
-
 
 def variational_regularization_filter_fista(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10.):
     """
@@ -627,13 +598,13 @@ def SWOTdenoise(*args, **kwargs):
     method = kwargs.get('method', 'var_reg_fista')
     param = kwargs.get('param', (0., 10., 0.) )          # default value to be defined, previously was: (1.5, 10., 10.) --> very long and not the optimal
     inpainting = kwargs.get('inpainting', False)
+    
     ## For variational regularization only
-    itermax = kwargs.get('itermax', 2000)              
-    epsilon = kwargs.get('epsilon', 1.e-6)
+    itermax   = kwargs.get('itermax', 2000)              
+    epsilon   = kwargs.get('epsilon', 1.e-6)
     pc_method = kwargs.get('pc_method', 'gaussian')
-    pc_param = kwargs.get('pc_param', 10.)
-    nsub = kwargs.get('nsub', 8)
-    cost = np.ndarray((itermax,), float)
+    pc_param  = kwargs.get('pc_param', 10.)
+    cost      = np.ndarray((itermax,), float)
 
     # 2. Perform denoising
     
