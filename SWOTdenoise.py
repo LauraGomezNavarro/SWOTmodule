@@ -12,7 +12,8 @@ Laura Gomez Navarro (1,2), Emmanuel Cosme (1), Nicolas Papadakis (3), Le Sommer,
 # HISTORY:
 - April 2018: version 1 (_orig)
 - May 2018: version 2
-- Last update: 14/06/2018
+- Update: 14/06/2018
+- Last update: 19/12/2019
 """ 
 
 import numpy as np
@@ -399,56 +400,6 @@ def interval_param(lam, lam_start, nsub):
         
     return a, nsub    
 
-def iterations_var_reg(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
-    """
-    Perform iterations for solving the variational regularization.
-    
-    Parameters:
-    ----------
-    ssh: original image (masked array)
-    ssh_d: working image (2D ndarray)
-    param: parameters, weights of the cost function
-    itermax: maximum number of iterations in the gradient descent method.
-    epsilon: for convergence criterium.
-    
-    Returns:
-    -------
-    ssh_d: 2D ndarray containing denoised ssh data (ssh_d is not a masked array!)
-    ##norm_array: Array of the norms calculated at each iteration to confirm convergence.
-    """
-    
-    # Gradient descent
-    tau = np.min( ( 1./(1+8*param[0]), 1./(1+64*param[1]), 1./(1+512*param[2]) ) )  # Fix the tau factor for iterations
-    #print tau
-    mask = 1 - ssh.mask                    # set 0 on masked values, 1 otherwise. For the background term of cost function.
-    iteration = 0
-    norm_array = [] #%
-    cost=np.ndarray((itermax,),float)
-    print (len(cost))
-    while (iteration < itermax):
-        
-        ssh_tmp = np.copy(ssh_d)
-        lap_tmp = laplacian(ssh_tmp)
-        bilap_tmp = laplacian(lap_tmp)
-        incr = mask*(ssh.data-ssh_tmp) + param[0]*lap_tmp - param[1]*bilap_tmp + param[2]*laplacian(bilap_tmp)
-        incr = tau * incr
-        ssh_d = ssh_tmp + incr
-        #norm = np.ma.sum(mask*incr*incr)/np.sum(mask)      # original norm used
-        norm = np.ma.max(np.abs(incr))
-        norm_array.append(norm) 
-        cost[iteration]=cost_function(mask,ssh.data,ssh_d, param)
-        iteration += 1
-        if norm < epsilon:
-            break
-    print('Iteration reached: ' + str(iteration))
-    print('norm/epsilon = ' + str(norm/epsilon))
-    
-    norm_array = np.array(norm_array) #%
-    
-    return ssh_d, norm_array, iteration-1, cost
-    # iteration -1, as the iteration at which it stops it does not filter
-
-
 def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     """
         Perform iterations for solving the variational regularization using accelerated Gradient descent
@@ -482,7 +433,7 @@ def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     iteration = 0
     norm_array = [] #%
     cost=np.ndarray((itermax,),float)
-    print (len(cost))
+    #print(len(cost))
     ssh_y = np.copy(ssh_d)
     t=1.
     while (iteration < itermax):
@@ -509,70 +460,12 @@ def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
         if norm < epsilon:
             break
     print('Iteration reached: ' + str(iteration))
-    print('norm/epsilon = ' + str(norm/epsilon))
+    print('norm/epsilon = ' + str(np.round(norm/epsilon,2)))
 
     norm_array = np.array(norm_array) #%
     
     return ssh_d, norm_array, iteration, cost
 # iteration -1, as the iteration at which it stops it does not filter
-
-
-
-
-def variational_regularization_filter(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10., nsub=8):
-    """
-    Apply variational regularization filter. \n
-    
-    Parameters:
-    ----------
-    ssh: masked array with nadir gap filled.
-    param: 3-entry tuple for first, second, and third order terms of the cost function, respectively.
-    itermax: maximum number of iterations in the gradient descent method.
-    epsilon: for convergence criterium.
-    pc_method: convolution method for preconditioning.
-    pc_param: parameter for preconditioning method.
-    nsub: number of sub-divisions for the warm-start strategy of iterations.
-    
-    Returns:
-    -------
-    ssh_d: 2D ndarray containing denoised ssh data (ssh_d is not a masked array!)
-    """
-    
-    # Apply the Gaussian filter for preconditioning
-    if any(param) is not 0.:
-        ssh_d = convolution_filter(ssh, pc_param, method = pc_method)  # output here is a simple ndarray
-    
-    npar = len(param)       # number of parameters
-    param_tmp = np.zeros(npar)
-    
-    lam_start = np.array([1., 0.01, 0.001])
-    
-    for ip in range(npar):
-        
-        if param[ip] > 0:                                      
-            if nsub > 1:
-                param_sub, nsub_tmp = interval_param(param[ip], lam_start[ip], nsub)  
-            
-                for isub in range(nsub_tmp):
-
-                    param_tmp[ip] = param_sub[isub]
-                    eps_tmp = epsilon * 10**(nsub_tmp-isub-1)
-                    #print 'loop: ',ip, isub, param_tmp, param_sub, eps_tmp
-                    ssh_d, norm, iters  = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon=eps_tmp, itermax=itermax)
-                    # always gives back norm and iters but the one finally saved in the netcdf is the final one (the one we want) 
-            
-            elif nsub == 1: # case where lambda not applied by intervals
-                    param_tmp[ip] = param[ip]
-                    ssh_d, norm, iters, c_func = iterations_var_reg(ssh, ssh_d, param_tmp, epsilon, itermax=itermax)
-            
-            else: 
-                print('nsub error' )
-                         
-        else:
-            print('Parameter for regularization order: ' + str(ip + 1) + ', is 0?')
-            print(param[ip])
-            
-    return ssh_d, norm, iters
 
 
 def variational_regularization_filter_fista(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10.):
@@ -604,42 +497,11 @@ def variational_regularization_filter_fista(ssh, param, itermax=2000, epsilon=1.
             
     return ssh_d, norm, iters, cost
 
-def variational_regularization_filter_gd(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10.):
-    """
-        Apply variational regularization filter. \n
-        
-        Parameters:
-        ----------
-        ssh: masked array with nadir gap filled.
-        param: 2-entry tuple for first and second, terms of the cost function, respectively.
-        itermax: maximum number of iterations in the gradient descent method.
-        epsilon: for convergence criterium.
-        pc_method: convolution method for preconditioning.
-        pc_param: parameter for preconditioning method.
-        
-        Returns:
-        -------
-        ssh_d: 2D ndarray containing denoised ssh data (ssh_d is not a masked array!)
-        """
-    
-    # Apply the Gaussian filter for preconditioning
-    if any(param) is not 0.:
-        ssh_d = convolution_filter(ssh, pc_param, method = pc_method)  # output here is a simple ndarray
-    
-    
-    ssh_d, norm, iters, cost  = iterations_var_reg(ssh, ssh_d, param, epsilon, itermax=itermax)
-    # always gives back norm and iters but the one finally saved in the netcdf is the final one (the one we want)
-
-
-    return ssh_d, norm, iters, cost
-
-
-
 def write_error_and_exit(nb):
     """Function called in case of error, to guide the user towards appropriate adjustment."""
     
     if nb == 1:
-        print("You must provide a SWOT file name OR SSH, lon, lat, x_ac and time arrays. SSH must be a masked array.")
+        print("You must provide a SWOT filename and output filename, or SSH, lon, lat, x_ac and time arrays. SSH must be a masked array.")
     if nb == 2:
         print("The filtering method is not correctly set.")
     if nb == 3:
@@ -647,7 +509,7 @@ def write_error_and_exit(nb):
     if nb == 4:
         print("For convolutional filters, lambd must be a number.")
     if nb == 5:
-        print("For the fista variational regularization filter, lambd must be a 2entry tuple.")
+        print("For the fista variational regularization filter, lambd must be a 2-entry tuple.")
     sys.exit()
 
 def cost_function(mask,hobs, h, param):
@@ -717,14 +579,13 @@ def SWOTdenoise(*args, **kwargs):
     
     Other keywords arguments are:
     - config: name of the config file (default: SWOTdenoise.cfg)
-    - method: gaussian, boxcar, or var_reg (default);
+    - method: gaussian, boxcar, or var_reg_fista (default);
     - param: number for gaussian and boxcar; 3-entry tuple for var_reg (default: (1.5, 0, 0); under investigation) ;
     - inpainting: if True, the nadir gap is inpainted. If False, it is not and the returned SSH array is of the same shape as the original one. If the SWOTdenoise function is called using arrays (see above description) with inpainting=True, then it returns SSH, lon, and lat arrays. If it is called using arrays with inpainting=False, it returns only SSH, since lon and lat arrays are the same as for the input field. Default is False.
-    - itermax: only for var_reg: maximum number of iterations in the gradient descent algortihm (default: 2000);
-    - epsilon: only for var_reg: convergence criterium for the gradient descent algortihm (default: 1e-6);
-    - pc_method: only for var_reg: convolution method for preconditioning (default: gaussian);
-    - pc_param: only for var_reg: parameter for preconditioning method (default: 10);
-    - nsub: only for var_reg: number of sub-divisions for the warm-start strategy of iterations (default: 8).
+    - itermax: only for var_reg_fista: maximum number of iterations in the gradient descent algortihm (default: 2000);
+    - epsilon: only for var_reg_fista: convergence criterium for the gradient descent algortihm (default: 1e-6);
+    - pc_method: only for var_reg_fista: convolution method for preconditioning (default: gaussian);
+    - pc_param: only for var_reg_fista: parameter for preconditioning method (default: 10);
     
     The algorithms are detailed in the scientific documentation.
 
@@ -736,9 +597,10 @@ def SWOTdenoise(*args, **kwargs):
     # 1.1. Input data
     
     file_input = len(args) == 2 ##
-   
+    
     if file_input:
         if type(args[0]) is not str: write_error_and_exit(1) 
+        
         filename = args[0]
         output_filename = args[1] ##
         swotfile = filename.split('/')[-1]
@@ -747,6 +609,10 @@ def SWOTdenoise(*args, **kwargs):
         configfilename = kwargs.get('config', 'SWOTdenoise.cfg')
         listvar = read_var_name(filename = configfilename)
         ssh, lon, lat, x_ac, time = read_data(filename, *listvar)
+    
+    elif len(args) == 1: 
+        write_error_and_exit(1) 
+        
     else:
         ssh         = kwargs.get('ssh', None)
         lon         = kwargs.get('lon', None)
@@ -759,7 +625,7 @@ def SWOTdenoise(*args, **kwargs):
     # 1.2. Denoising method and options
            
     method = kwargs.get('method', 'var_reg_fista')
-    param = kwargs.get('param', (1.5, 10., 10.) )          # default value to be defined
+    param = kwargs.get('param', (0., 10., 0.) )          # default value to be defined, previously was: (1.5, 10., 10.) --> very long and not the optimal
     inpainting = kwargs.get('inpainting', False)
     ## For variational regularization only
     itermax = kwargs.get('itermax', 2000)              
@@ -807,23 +673,6 @@ def SWOTdenoise(*args, **kwargs):
             epsilon = 'none'
         else:
             write_error_and_exit(4)
-
-    if method == 'var_reg':
-        if isinstance(param, tuple) and len(param) == 3:
-            ssh_d, norm, iters = variational_regularization_filter(ssh_f, param, \
-                                                      itermax=itermax, epsilon=epsilon, pc_method=pc_method, \
-                                                      pc_param=pc_param, nsub=nsub)
-        else:
-            write_error_and_exit(3)
-            
-    if method == 'var_reg_gd':
-        #Gradient descent
-        if isinstance(param, tuple) and len(param) == 3:
-            ssh_d, norm, iters, cost = variational_regularization_filter_gd(ssh_f, param, \
-                                                                          itermax=itermax, epsilon=epsilon, pc_method=pc_method, \
-                                                                          pc_param=pc_param)
-        else:
-            write_error_and_exit(3)
             
     if method == 'var_reg_fista':
         #Fista acceleration
@@ -849,7 +698,7 @@ def SWOTdenoise(*args, **kwargs):
     # Set masked values to fill value
     
     if np.ma.is_masked(ssh_d):# check if mask is not = False, because if so by default it selects the first row of the array and applies to it the fill_value
-        print 'ssh_d is masked'
+        #print('ssh_d is masked')
         mask = ssh_d.mask
         ssh_d.data[mask] = ssh_d.fill_value
         
