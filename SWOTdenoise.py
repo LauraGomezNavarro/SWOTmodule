@@ -372,7 +372,7 @@ def laplacian(u):
     Ml = div(gradx(u), grady(u));
     return Ml
 
-def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
+def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-6, itermax=2000):
     """
         Perform iterations for solving the variational regularization using accelerated Gradient descent
         
@@ -439,7 +439,7 @@ def iterations_var_reg_fista(ssh, ssh_d, param, epsilon=1.e-5, itermax=1000):
     return ssh_d, norm_array, iteration, cost
 # iteration -1, as the iteration at which it stops it does not filter
 
-def variational_regularization_filter_fista(ssh, param, itermax=2000, epsilon=1.e-6, pc_method='gaussian', pc_param=10.):
+def variational_regularization_filter_fista(ssh, param, itermax, epsilon, pc_method='gaussian', pc_param=10.):
     """
         Apply variational regularization filter. \n
         
@@ -450,7 +450,7 @@ def variational_regularization_filter_fista(ssh, param, itermax=2000, epsilon=1.
         itermax: maximum number of iterations in the gradient descent method.
         epsilon: for convergence criterium.
         pc_method: convolution method for preconditioning.
-        pc_param: parameter for preconditioning method.
+        pc_param: parameter for pre-conditioning method.
         
         Returns:
         -------
@@ -551,13 +551,13 @@ def SWOTdenoise(*args, **kwargs):
     Other keywords arguments are:
     - config: name of the config file (default: SWOTdenoise.cfg)
     - method: gaussian, boxcar, or var_reg_fista (default);
-    - param: number for gaussian and boxcar; 3-entry tuple for var_reg (default: (1.5, 0, 0); under investigation) ;
+    - param: number for gaussian and boxcar; 3-entry tuple for var_reg_fista (default: (1.5, 0, 0); under investigation) ;
     - inpainting: if True, the nadir gap is inpainted. If False, it is not and the returned SSH array is of the same shape as the original one. If the SWOTdenoise function is called using arrays (see above description) with inpainting=True, then it returns SSH, lon, and lat arrays. If it is called using arrays with inpainting=False, it returns only SSH, since lon and lat arrays are the same as for the input field. Default is False.
     - itermax: only for var_reg_fista: maximum number of iterations in the gradient descent algortihm (default: 2000);
-    - epsilon: only for var_reg_fista: convergence criterium for the gradient descent algortihm (default: 1e-6);
-    - pc_method: only for var_reg_fista: convolution method for preconditioning (default: gaussian);
-    - pc_param: only for var_reg_fista: parameter for preconditioning method (default: 10);
-    
+    - epsilon: only for var_reg_fista: convergence criterion for the gradient descent algortihm (default: 1e-6);
+    - pc_method: only for var_reg_fista: convolution method for pre-conditioning (default: gaussian);
+    - pc_param: only for var_reg_fista: parameter for pre-conditioning method (default: 10);
+   
     The algorithms are detailed in the scientific documentation.
 
     """
