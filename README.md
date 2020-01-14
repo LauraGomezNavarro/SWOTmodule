@@ -1,5 +1,9 @@
 # SWOTmodule
 
+New versions of this module can be now found at: xx
+
+Last updated on: xx
+
 * Example notebooks:
 
   * 2018-03-03-ec-discover-SWOTmodule.ipynb
