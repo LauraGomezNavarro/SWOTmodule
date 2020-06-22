@@ -8,9 +8,9 @@ Last updated on: xx
 
   * 2018-03-03-ec-discover-SWOTmodule.ipynb
 
-  * 2018-04-18-lgn-discover-SWOTmodule.ipynb : Example of using SWOYdenoise module with the SWOT simualtor output netcdfs
+  * 2018-04-18-lgn-discover-SWOTmodule.ipynb : Example of using SWOTdenoise module with the SWOT simulator output netcdfs
 
-  * 2018-04-18-lgn-discover-SWOTmodule_box_dataset.ipynb : Example of using SWOYdenoise module with modified SWOT simualtor output netcdfs.  In this case the dataset used in the study Gomez-Navarro et al. (in review). 
+  * 2018-04-18-lgn-discover-SWOTmodule_box_dataset.ipynb : Example of using SWOTdenoise module with modified SWOT simulator output netcdfs.  In this case the dataset used in the study Gomez-Navarro et al. (2020). 
 
 * Codes:
 
