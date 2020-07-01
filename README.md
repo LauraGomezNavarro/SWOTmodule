@@ -1,8 +1,6 @@
 # SWOTmodule
 
-New versions of this module can be now found at: xx
-
-Last updated on: xx
+New versions of this module can be now found at: https://github.com/meom-group/SWOTmodule 
 
 * Example notebooks:
 
